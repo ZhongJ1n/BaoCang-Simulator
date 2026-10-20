@@ -113,6 +113,29 @@
   body.tilted #topbar { border-color:#f44336; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(1.5px)} 75%{transform:translateX(-1.5px)} }
 
+  /* ============ 宽屏（iPad / 电脑）：两栏交易桌 ============ */
+  @media (min-width: 820px){
+    #app { max-width:1560px; padding:14px 16px 0; }
+    #start-screen { max-width:520px; margin:0 auto; width:100%; }
+    #game-screen { display:grid; gap:10px;
+      grid-template-columns:330px 1fr;
+      grid-template-rows:auto auto auto 1fr auto;
+      grid-template-areas:
+        "topbar news"
+        "list rumor"
+        "list chart"
+        "list trade"
+        "list action"; }
+    #stickyhead, #scrollarea { display:contents; }
+    #topbar { grid-area:topbar; margin:0; }
+    #newsflash { grid-area:news; margin:0; }
+    #rumor-card { grid-area:rumor; margin:0; }
+    #chartbox { grid-area:chart; margin:0; align-self:start; }
+    #sectors { grid-area:list; margin:0; min-height:0; overflow-y:auto; }
+    #trade { grid-area:trade; margin:0; align-self:start; }
+    #actionbar { grid-area:action; margin:0; border-radius:10px; }
+  }
+
   .poster { background:#0d1015; border:2px dashed #f0b90b; border-radius:10px;
             padding:16px; text-align:center; margin:12px 0; }
   .poster .big { font-size:22px; font-weight:bold; color:#f44336; margin:8px 0; }
@@ -690,8 +713,9 @@ function drawSpark(cv, s){
 /* ============ K线图（蜡烛+影线+成交量，红涨绿跌） ============ */
 function drawChart(){
   const cv = document.getElementById('chart'), ctx = cv.getContext('2d');
-  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 320;
-  cv.style.height = '160px';
+  const wideChart = cv.offsetWidth > 640;
+  const W = cv.width = cv.offsetWidth * 2, H = cv.height = wideChart ? 520 : 320;
+  cv.style.height = wideChart ? '260px' : '160px';
   ctx.fillStyle = '#0d1015'; ctx.fillRect(0,0,W,H);
   const s = S(selected), data = G.ohlc[selected];
   document.getElementById('chart-name').innerText = s.name + ' · 日K';
