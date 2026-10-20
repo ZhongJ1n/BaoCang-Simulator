@@ -1156,7 +1156,8 @@ function mergeScores(global){
   const seen = new Set(), all = [];
   for (const s of [...global, ...loadScores()]){
     if (!s || !Number.isFinite(s.pnl)) continue;
-    const k = (s.ts || 0) + '|' + (s.name || '') + '|' + (s.seed || '');
+    // 去重键不能带 ts：Worker 存的是服务器接收时间，本机存的是客户端时间，同一局必然对不上 → 假重复上榜
+    const k = (s.name || '') + '|' + (s.seed || '') + '|' + s.pnl + '|' + (s.days || 0);
     if (seen.has(k)) continue; seen.add(k); all.push(s);
   }
   all.sort((a, b) => a.pnl - b.pnl);
