@@ -14,6 +14,10 @@
          height:100vh; height:100dvh; display:flex; flex-direction:column; }
   #game-screen { display:flex; flex-direction:column; flex:1; min-height:0; }
   #scrollarea { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  /* 隐藏内部滚动区的系统滚动条（桌面端开始屏右侧那条亮竖线）；滚轮/触摸滑动不受影响 */
+  #start-screen, #scrollarea, #sectors, .modal { scrollbar-width:none; }
+  #start-screen::-webkit-scrollbar, #scrollarea::-webkit-scrollbar,
+  #sectors::-webkit-scrollbar, .modal::-webkit-scrollbar { display:none; }
                 padding-bottom:12px; }
   .hidden { display:none !important; }
 
