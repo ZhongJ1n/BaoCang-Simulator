@@ -513,7 +513,7 @@ function toggleSound(){
   const b = document.getElementById('sound-btn');
   if (b) b.innerText = soundOn ? '🔊 音效开' : '🔇 音效关';
   if (soundOn) sfx('buy');
-  if (!soundOn) stopBgm(); else startBgm();
+  if (!soundOn) stopBgm(); else { startBgm(); startMusic(); }
 }
 
 function buy(id, amount){
@@ -736,7 +736,7 @@ const name = document.getElementById('player-name').value.trim() || '无名韭�
 G = newGame(seed); G.playerName = name;
 document.getElementById('start-screen').classList.add('hidden');
 document.getElementById('game-screen').classList.remove('hidden');
-startBgm();
+startBgm(); startMusic();
 flash(`📻 ${name} 入市。种子 ${seed}（把种子发给朋友，用同一串=同一盘行情）。祝好运——虽然这游戏里好运没什么用。`);
 render();
 }
@@ -933,7 +933,7 @@ function resumeGame(){
     rng = mulberry32(hashSeed(G.seed + ':resume:' + G.day));   // 续玩从当前位置续随机流
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
-    startBgm();
+    startBgm(); startMusic();
     flash(`▶️ 欢迎回来，${G.playerName || '玩家'}。第 ${G.day} 天继续——上次你停在的，就是现在。`);
     render();
   } catch(e){}
@@ -1255,7 +1255,36 @@ function startBgm(){
   if (gs && gs.classList.contains('hidden') && !bgmEl) return;
   try { ensureBgmEl(); if (bgmEl && bgmEl.paused){ const p = bgmEl.play(); if (p) p.catch(() => {}); } } catch(e){}
 }
-function stopBgm(){ try { if (bgmEl) bgmEl.pause(); } catch(e){} }
+function stopBgm(){ stopMusic(); try { if (bgmEl) bgmEl.pause(); } catch(e){} }
+/* 默认背景音乐：WebAudio 现场生成的循环（Am–F–G–C 低音+和弦垫+零星拨弦）。
+   用户没传 bgm 时它顶上；传了就自动让位。 */
+let musicTimer = null, musicStep = 0;
+const MUSIC_CHORDS = [
+  [110.00, 164.81, 261.63],   // Am
+  [ 87.31, 130.81, 220.00],   // F
+  [ 98.00, 146.83, 246.94],   // G
+  [130.81, 196.00, 329.63],   // C
+];
+function musicTick(){
+  if (!soundOn || customAudio.bgm) return;
+  const gs = document.getElementById('game-screen');
+  if (!gs || gs.classList.contains('hidden')) return;
+  const bar = Math.floor(musicStep / 8) % MUSIC_CHORDS.length, beat = musicStep % 8;
+  const ch = MUSIC_CHORDS[bar];
+  if (beat === 0){
+    tone(ch[0], ch[0], 0, 1.7, 'sine', 0.050);
+    tone(ch[1], ch[1], 0, 1.7, 'sine', 0.026);
+    tone(ch[2], ch[2], 0, 1.7, 'sine', 0.026);
+  }
+  if (beat === 4) tone(ch[0], ch[0], 0, 0.9, 'sine', 0.040);
+  if (beat % 2 === 0 && Math.random() < 0.55){
+    const pluck = [ch[1] * 2, ch[2] * 2, ch[0] * 4, ch[2] * 2, ch[1] * 2];
+    tone(pluck[musicStep % pluck.length], 0, 0, 0.32, 'triangle', 0.016);
+  }
+  musicStep++;
+}
+function startMusic(){ if (musicTimer) return; musicStep = 0; try { musicTimer = setInterval(musicTick, 460); } catch(e){} }
+function stopMusic(){ if (musicTimer){ clearInterval(musicTimer); musicTimer = null; } }
 function pickAudio(slot){ pendingSlot = slot; document.getElementById('audio-file').click(); }
 async function onAudioFile(ev){
   const f = ev.target.files && ev.target.files[0]; ev.target.value = '';
