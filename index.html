@@ -904,28 +904,43 @@ function recordScore(endLabel){
   try { localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, 100))); } catch(e){}
   if (SCORES_API){
     try { fetch(SCORES_API, { method:'POST', mode:'no-cors',
-      headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(entry) }); } catch(e){}
+      headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(entry) }).catch(() => {}); } catch(e){}
   }
 }
 function escHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function renderBoard(){
+async function renderBoard(){
   const el = document.getElementById('board'); if (!el) return;
-  const all = loadScores(), list = all.slice(0, 10);
+  let global = [];
+  if (SCORES_API){
+    el.innerHTML = '<h3>🌐 全网亏神榜</h3><div class="bempty">正在拉取全网数据…</div>';
+    try {
+      const r = await fetch(SCORES_API, { cache: 'no-store' });
+      if (r.ok){ const j = await r.json(); if (Array.isArray(j)) global = j; }
+    } catch(e){}
+  }
+  const seen = new Set(), all = [];
+  for (const s of [...global, ...loadScores()]){
+    if (!s || !Number.isFinite(s.pnl)) continue;
+    const k = (s.ts || 0) + '|' + (s.name || '') + '|' + (s.seed || '');
+    if (seen.has(k)) continue; seen.add(k); all.push(s);
+  }
+  all.sort((a, b) => a.pnl - b.pnl);
+  const list = all.slice(0, 10), online = global.length > 0;
   if (!list.length){
     el.innerHTML = '<h3>🏆 亏神榜</h3><div class="bempty">暂无记录。来亏出第一个传说吧。</div>';
     return;
   }
   const medals = ['👑','🥈','🥉'];
-  el.innerHTML = '<h3>🏆 亏神榜 · 亏得越多越光荣</h3>' + list.map((s, i) => {
+  el.innerHTML = `<h3>${online ? '🌐 全网亏神榜' : '🏆 亏神榜'} · 亏得越多越光荣</h3>` + list.map((s, i) => {
     const d = new Date(s.ts), when = (d.getMonth()+1) + '/' + d.getDate();
     const loss = s.pnl < 0 ? '<span class="bloss">-' + fmt(-s.pnl) + '</span>'
                            : '<span class="bwin">+' + fmt(s.pnl) + '</span>';
     return `<div class="brow"><span class="brank">${medals[i] || (i+1)}</span>` +
       `<span class="bname">${escHtml(s.name)}</span>${loss}` +
       `<span class="bend">${s.end} · ${s.days}天 · ${when}</span></div>`;
-  }).join('') + `<div class="bfoot">本机已记录 ${all.length} 局 · 按亏损额排名</div>`;
+  }).join('') + `<div class="bfoot">${online ? '全网' : '本机'}共 ${all.length} 局 · 按亏损额排名</div>`;
 }
 renderBoard();
 
