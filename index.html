@@ -128,6 +128,15 @@
   .bwin { color:#2ebd85; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
   .bend { color:#8a919e; font-size:11px; flex:none; }
   .bfoot { color:#5c6470; font-size:11px; margin-top:8px; text-align:right; }
+  .achbanner { background:#2a2410; border:1px solid #f0b90b; border-radius:10px;
+    padding:10px 12px; margin:10px 0; color:#ffd94d; font-size:14px; line-height:1.6; }
+  .achrow { display:flex; align-items:center; gap:8px; padding:6px 0;
+    border-top:1px solid #1e2534; font-size:13px; }
+  .achrow .achname { font-weight:700; flex:none; }
+  .achrow.got .achname { color:#f0b90b; }
+  .achrow.locked { opacity:.45; }
+  .achrow .achdesc { color:#8a919e; font-size:12px; flex:1; }
+  .achrow .achdate { color:#5c6470; font-size:11px; flex:none; }
 
   /* ============ 奶蛙吉祥物 ============ */
   #game-screen { position:relative; }
@@ -189,6 +198,7 @@
       游戏想告诉你的是：<b>赌徒心态 + 杠杆 = 爆仓</b>，现实中请远离赌博与非法配资。
     </div>
     <div id="board" class="board"></div>
+    <div id="achwall" class="board"></div>
   </div>
 
   <!-- 游戏主界面 -->
@@ -910,6 +920,7 @@ function recordScore(endLabel){
   const eq = Math.round(equity());  // equity() 已是扣除负债后的净值
   const entry = { name: G.playerName || '无名韭菜', eq, pnl: eq - 100000,
     days: Math.min(G.day, DAYS), end: endLabel, seed: G.seed, ts: Date.now() };
+  G.newAch = checkAch(entry.pnl);
   const list = loadScores(); list.push(entry);
   list.sort((a, b) => a.pnl - b.pnl);
   try { localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, 100))); } catch(e){}
@@ -917,6 +928,40 @@ function recordScore(endLabel){
     try { fetch(SCORES_API, { method:'POST', mode:'no-cors',
       headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(entry) }).catch(() => {}); } catch(e){}
   }
+}
+/* ============ 成就（全游戏就两个，都是极端局） ============ */
+const ACH_KEY = 'baocang_ach_v1';
+const ACHIEVEMENTS = [
+  { id:'gift',  icon:'🐸', name:'奶蛙的馈赠', desc:'单局盈利 ≥ 100 万元', test: pnl => pnl >= 1000000 },
+  { id:'leave', icon:'🎫', name:'买定离场',   desc:'单局亏损 ≥ 100 万元', test: pnl => pnl <= -1000000 }
+];
+function loadAch(){
+  try { return JSON.parse(localStorage.getItem(ACH_KEY)) || {}; } catch(e){ return {}; }
+}
+function checkAch(pnl){
+  const ach = loadAch(), fresh = [];
+  for (const a of ACHIEVEMENTS){
+    if (!ach[a.id] && a.test(pnl)){ ach[a.id] = Date.now(); fresh.push(a); }
+  }
+  if (fresh.length){ try { localStorage.setItem(ACH_KEY, JSON.stringify(ach)); } catch(e){} }
+  return fresh;
+}
+function achBanner(){
+  if (!G || !G.newAch || !G.newAch.length) return '';
+  return '<div class="achbanner">' + G.newAch.map(a =>
+    `🏆 成就解锁：<b>${a.icon} ${a.name}</b>（${a.desc}）`).join('<br>') + '</div>';
+}
+function renderAch(){
+  const el = document.getElementById('achwall'); if (!el) return;
+  const ach = loadAch();
+  const got = ACHIEVEMENTS.filter(a => ach[a.id]).length;
+  el.innerHTML = `<h3>🏆 成就 · ${got}/${ACHIEVEMENTS.length}</h3>` + ACHIEVEMENTS.map(a => {
+    const ts = ach[a.id];
+    const when = ts ? ((new Date(ts).getMonth()+1) + '/' + new Date(ts).getDate() + ' 解锁') : '未解锁';
+    return `<div class="achrow ${ts ? 'got' : 'locked'}"><span>${ts ? a.icon : '🔒'}</span>` +
+      `<span class="achname">${a.name}</span><span class="achdesc">${a.desc}</span>` +
+      `<span class="achdate">${when}</span></div>`;
+  }).join('');
 }
 function escHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -963,6 +1008,7 @@ async function renderBoard(){
   } catch(e){ /* 超时/断网就停在本机榜 */ }
 }
 renderBoard();
+renderAch();
 
 function gameOver(kind){
   G.over = true; G.mocked = true; clearSave(); updateMascot();
@@ -984,7 +1030,7 @@ function gameOver(kind){
       <p>你上头的时候按下的每一个按钮，手续费都替你记着账。复盘看看：<b>如果第一天全仓银行红利躺平不动，现在是 ${fmt(G.lieCash + G.lieShares*G.prices.bank)}。</b></p>
       <p>🎓 戒赌课第2课：<b>你输给的不是市场，是你自己的手。</b></p>`;
   }
-  showModal(html + endButtons(kind));
+  showModal(html + achBanner() + endButtons(kind));
 }
 function settle(){
   G.over = true;
@@ -1012,7 +1058,7 @@ function settle(){
     <div>${ach.map(a=>`<span class="achieve">${a}</span>`).join('')}</div>
     <div class="poster"><div class="big">种子 ${G.seed}</div>
       <div>把种子发给朋友，同一盘行情比谁活得久——输的请奶茶 🧋</div></div>
-    ${endButtons('settle')}`);
+    ${achBanner()}${endButtons('settle')}`);
   drawSettleChart();
 }
 function endButtons(kind){
