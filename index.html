@@ -7,13 +7,15 @@
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-         background:#101318; color:#e8e8e8; font-size:14px; }
+         background:#101318; color:#e8e8e8; font-size:14px;
+         font-variant-numeric:tabular-nums; }
   #app { max-width:640px; margin:0 auto; padding:10px 10px 120px; }
   .hidden { display:none !important; }
 
-  /* 顶部信息栏 */
+  /* 顶部信息栏：吸顶 */
   #topbar { display:flex; justify-content:space-between; align-items:center;
-            background:#1a1f27; border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+            background:#1a1f27; border-radius:10px; padding:10px 12px; margin-bottom:10px;
+            position:sticky; top:8px; z-index:40; box-shadow:0 6px 18px rgba(0,0,0,.45); }
   #topbar .day { font-size:16px; font-weight:bold; color:#f0b90b; }
   #topbar .money { font-size:15px; }
   #tiltbar-wrap { margin-top:6px; }
@@ -22,12 +24,20 @@
               background:linear-gradient(90deg,#4caf50,#f0b90b,#f44336); transition:width .4s; }
   .tilt-label { font-size:12px; color:#9aa0aa; margin-top:3px; }
 
-  /* 提示条 */
+  /* 提示条：固定3行高，版面不跳动 */
   #newsflash { background:#1a1f27; border-left:3px solid #f0b90b; border-radius:6px;
-               padding:8px 10px; margin-bottom:10px; font-size:13px; min-height:20px; }
+               padding:8px 10px; margin-bottom:10px; font-size:13px; line-height:1.5;
+               height:76px; overflow:hidden; display:-webkit-box;
+               -webkit-line-clamp:3; -webkit-box-orient:vertical; }
 
-  /* K线图 */
-  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:10px; }
+  /* 小道消息独立卡片 */
+  #rumor-card { background:linear-gradient(135deg,#2a2118,#1e242e); border:1px solid #f0b90b;
+                border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px; }
+  #rumor-card .btnrow { margin-top:8px; margin-bottom:0; }
+
+  /* K线图：吸顶跟随（钉在资产栏下方） */
+  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:10px;
+              position:sticky; top:96px; z-index:35; box-shadow:0 6px 18px rgba(0,0,0,.45); }
   #chartbox .chart-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
   #chartbox .chart-head .nm { font-size:15px; font-weight:bold; }
   #chartbox .chart-head .pc { font-size:14px; }
@@ -39,17 +49,18 @@
   .sector { display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer;
             border-bottom:1px solid #232833; border-radius:8px; }
   .sector.selected { background:#1a1f27; }
+  .sector.held { box-shadow:inset 3px 0 0 #f0b90b; }
   .sector .sleft { flex:1; min-width:0; }
   .sector .sname { font-weight:bold; font-size:16px; color:#fff; }
   .sector .ssub { font-size:12px; color:#8a919c; margin-top:2px; white-space:nowrap;
                    overflow:hidden; text-overflow:ellipsis; }
   .sector canvas.spark { width:88px; height:40px; flex:none; }
-  .sector .sright { text-align:right; flex:none; }
+  .sector .sright { text-align:right; flex:none; width:94px; }
   .sector .sprice { font-size:16px; color:#fff; }
   .sector .pill { display:inline-block; min-width:64px; text-align:center; margin-top:3px;
                   padding:3px 8px; border-radius:6px; font-size:13px; color:#fff; }
   .pill.up { background:#d32f2f; } .pill.down { background:#1d9e75; } .pill.flat { background:#3a4152; }
-  .sector .heat { height:4px; background:#2a2f3a; border-radius:2px; margin-top:5px; overflow:hidden; width:110px; margin-left:auto; }
+  .sector .heat { height:4px; background:#2a2f3a; border-radius:2px; margin-top:5px; overflow:hidden; }
   .sector .heat > div { height:100%; background:linear-gradient(90deg,#2196f3,#f0b90b,#f44336); }
   .limitdown-tag { color:#26a69a; font-size:11px; font-weight:bold; }
 
@@ -66,10 +77,11 @@
   .danger { background:#b71c1c; }
   button:disabled { opacity:.4; }
 
-  /* 底部固定操作栏 */
+  /* 底部固定操作栏（含 iPhone 安全区） */
   #actionbar { position:fixed; left:0; right:0; bottom:0; background:#141920;
                border-top:1px solid #2a2f3a; padding:10px; display:flex; gap:8px;
-               max-width:640px; margin:0 auto; }
+               max-width:640px; margin:0 auto; z-index:40;
+               padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
   #actionbar button { flex:1; padding:12px; font-size:15px; }
 
   /* 弹窗 */
@@ -84,7 +96,8 @@
   /* 开始界面 */
   #start-screen { min-height:90vh; display:flex; flex-direction:column; justify-content:center;
                   text-align:center; padding:24px; }
-  #start-screen h1 { font-size:34px; margin:0 0 6px; color:#f0b90b; }
+  #start-screen h1 { font-size:36px; margin:0 0 6px; color:#f0b90b; letter-spacing:3px;
+                     text-shadow:0 0 26px rgba(240,185,11,.35); }
   #start-screen .sub { color:#9aa0aa; margin-bottom:20px; }
   #start-screen input { width:100%; padding:12px; border-radius:8px; border:1px solid #2a2f3a;
                         background:#1a1f27; color:#fff; font-size:15px; margin-bottom:10px; text-align:center; }
@@ -135,6 +148,8 @@
     </div>
 
     <div id="newsflash">📻 欢迎来到 A 股。记住：你看到的"热点"，都是别人出货的出口。</div>
+
+    <div id="rumor-card" class="hidden"></div>
 
     <div id="chartbox">
       <div class="chart-head">
@@ -494,11 +509,10 @@ msg += pnl >= 0? `，总资产 <span class="up">${fmt(equity())}</span>（+${(pn
 : `，总资产 <span class="down">${fmt(equity())}</span>（${(pnl*100).toFixed(1)}%）`;
 if (ev) msg += `<br>${ev.text}`;
 if (divMsg) msg += `<br>${divMsg}`;
-/* 小道消息（30%）：信了就是一次赌博 */
+/* 小道消息（30%）：信了就是一次赌博 —— 由独立卡片展示（不再挤进消息栏） */
 if (rng() < 0.3 && G.day <= DAYS){
 const t = pick(SECTORS.filter(s=>s.id!=='bank'));
 G.pendingRumor = { target: t.id, trap: rng() < 0.7};
-msg += `<br>📩 收到一条小道消息：「${t.name} 有内幕利好，明天必涨！」——<button onclick="believeRumor()">梭一部分跟买</button> <button onclick="ignoreRumor()">当没看见</button>`;
 }
 flash(msg);
 if (G.margin) checkMargin();
@@ -542,6 +556,16 @@ function render(){
   mb.disabled = G.tilt < 50 && !G.margin;
   mb.innerText = G.margin ? `🏦 配资中 (1:${G.margin.lev})` : (G.tilt >= 50 ? '🏦 配资公司 🟢' : '🏦 配资公司 🔒');
 
+  /* 小道消息卡片 */
+  const rc = document.getElementById('rumor-card');
+  if (G.pendingRumor){
+    const t = S(G.pendingRumor.target);
+    rc.classList.remove('hidden');
+    rc.innerHTML = `📩 小道消息：「<b>${t.name}</b> 有内幕利好，明天必涨！」——70% 的消息都是庄家出货的坑。
+      <div class="btnrow"><button class="buy" onclick="believeRumor()">梭一部分跟买</button>
+      <button onclick="ignoreRumor()">当没看见</button></div>`;
+  } else { rc.classList.add('hidden'); rc.innerHTML=''; }
+
   /* 板块列表：自选股样式（左名字+代表股 / 中迷你走势 / 右价格+涨跌胶囊） */
   const box = document.getElementById('sectors'); box.innerHTML = '';
   SECTORS.forEach(s=>{
@@ -549,19 +573,19 @@ function render(){
     const pillCls = chg>0.0005?'up':(chg<-0.0005?'down':'flat');
     const h = G.hold[s.id], hv = h.shares * G.prices[s.id];
     const d = document.createElement('div');
-    d.className = 'sector' + (s.id===selected ? ' selected':'');
+    d.className = 'sector' + (s.id===selected ? ' selected':'') + (hv>1 ? ' held':'');
     d.onclick = ()=>{ selected = s.id; inspectIdx = -1; render(); };
     d.innerHTML = `
       <div class="sleft">
         <div class="sname">${s.name}${G.limitDown[s.id]?' <span class="limitdown-tag">🧊跌停</span>':''}</div>
         <div class="ssub">${s.sub}</div>
         <div class="ssub">热度 ${Math.round(G.heat[s.id])} · 持有 ${hv>1?fmt(hv):'—'}</div>
+        <div class="heat"><div style="width:${Math.min(100,G.heat[s.id]*2)}%"></div></div>
       </div>
       <canvas class="spark" width="176" height="80"></canvas>
       <div class="sright">
         <div class="sprice">${G.prices[s.id].toFixed(2)}</div>
         <span class="pill ${pillCls}">${chg>=0?'+':''}${(chg*100).toFixed(2)}%</span>
-        <div class="heat"><div style="width:${Math.min(100,G.heat[s.id]*2)}%"></div></div>
       </div>`;
     box.appendChild(d);
     drawSpark(d.querySelector('canvas.spark'), s);
@@ -570,8 +594,13 @@ function render(){
   /* 交易面板 */
   const s = S(selected), h = G.hold[selected];
   document.getElementById('trade-title').innerText = `交易 · ${s.name}（${G.prices[selected].toFixed(1)}）`;
-  document.getElementById('trade-hold').innerText =
-    `持有 ${h.shares.toFixed(2)} 股（约 ${fmt(h.shares*G.prices[selected])} 元）${s.desc}`;
+  let pnlHtml = '';
+  if (h.shares > 0.01 && h.avgCost > 0){
+    const pp = (G.prices[selected]/h.avgCost - 1) * 100;
+    pnlHtml = ` · 浮动盈亏 <span class="${pp>=0?'up':'down'}">${pp>=0?'+':''}${pp.toFixed(1)}%</span>`;
+  }
+  document.getElementById('trade-hold').innerHTML =
+    `持有 ${h.shares.toFixed(2)} 股（约 ${fmt(h.shares*G.prices[selected])} 元）${pnlHtml}<br>${s.desc}`;
   const buyBtns = document.getElementById('buy-btns'), sellBtns = document.getElementById('sell-btns');
   buyBtns.innerHTML=''; sellBtns.innerHTML='';
   [5000,10000,30000].forEach(a=>{
