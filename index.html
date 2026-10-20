@@ -890,7 +890,7 @@ function drawSettleChart(){
 /* ============ 结算与结局 ============ */
 /* ============ 亏神榜（本机记录；SCORES_API 接好后可全网同步） ============ */
 const SCORES_KEY = 'baocang_scores_v1';
-const SCORES_API = '';
+const SCORES_API = 'https://baocang.3024602887.workers.dev';
 function loadScores(){
   try { return JSON.parse(localStorage.getItem(SCORES_KEY)) || []; } catch(e){ return []; }
 }
