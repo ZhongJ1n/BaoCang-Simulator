@@ -224,6 +224,7 @@
         <div class="money">💰 总资产 <b id="equity-label">100000</b></div>
         <div class="tilt-label">现金 <span id="cash-label">100000</span></div>
         <div class="tilt-label" id="debt-label" style="color:#f44336"></div>
+        <div><button id="sound-btn" onclick="toggleSound()" style="background:#232833;color:#e8e8e8;border:1px solid #3a4152;border-radius:8px;padding:2px 10px;font-size:12px;cursor:pointer">🔊 音效开</button></div>
       </div>
     </div>
 
@@ -300,7 +301,7 @@ function genHistory(s){
     r = Math.max(-s.limit, Math.min(s.limit, r));
     p *= (1+r); closes.push(p);
   }
-  const scale = 100 / closes[PRE_DAYS-1];           // 归一化：昨日收盘 = 100，与开局价衔接
+  const scale = 1;   // 不归一化：昨日收盘就停在走势自己走出来的位置，各板块开局价高低错落才像真股票
   const candles = [];
   for (let i=0; i<PRE_DAYS; i++){
     const c0 = closes[i]*scale;
@@ -325,7 +326,7 @@ function newGame(seedStr){
     const pre = genHistory(s);
     ohlc[s.id] = pre;
     histories[s.id] = pre.map(k=>k.c);
-    prices[s.id] = 100;
+    prices[s.id] = pre[pre.length-1].c;   // 开局价 = 预生成历史的真实收尾价
     heat[s.id] = initHeat[s.id];
     hold[s.id] = { shares:0, boughtToday:0, avgCost:0 };
     const last = pre[pre.length-1], prev = pre[pre.length-2];
@@ -336,7 +337,7 @@ function newGame(seedStr){
     prices, histories, heat, hold, ohlc, lastChange,
     limitDown:{}, limitUp:{}, shorts:{},
     equityHist:[100000], lieHist:[100000],
-    lieShares: 99900/100, lieCash: 100,   // 躺平线：第一天全仓银行红利
+    lieShares: 99900 / prices.bank, lieCash: 100,   // 躺平线：第一天全仓银行红利（按真实开局价折算股数）
     margin:null, firstMarginRig:false, marginOpens:0,
     loanOffered:false, loanRefused:false, emptyDays:0,
     lastEquity:100000, over:false, log:[], trades:[],
@@ -453,6 +454,53 @@ let inspectIdx = -1;      // K线图点按查看的蜡烛序号
 let chartGeom = null;     // drawChart 记录的几何信息，供点按换算
 function flash(msg){ document.getElementById('newsflash').innerHTML = msg;}
 
+/* ============ 音效：WebAudio 现场合成（不需要音频文件）
+   以后想换真音频：把对应 sfx 名改成播放 <audio>/Audio 文件即可 ============ */
+let AC = null;
+let soundOn = true;
+try { soundOn = localStorage.getItem('baocang_sound') !== '0'; } catch(e){}
+function acx(){
+  if (!AC){ const Ctor = window.AudioContext || window.webkitAudioContext; if (!Ctor) return null; AC = new Ctor(); }
+  if (AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(f0, f1, delay, dur, type, vol){
+  const ctx = acx(); if (!ctx) return;
+  const t = ctx.currentTime + (delay || 0);
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(Math.max(1, f0), t);
+  if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol || 0.12, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function sfx(name){
+  if (!soundOn) return;
+  try {
+    switch(name){
+      case 'buy':       tone(620, 620, 0, .07, 'triangle', .10); tone(930, 930, .06, .10, 'triangle', .10); break;
+      case 'sell':      tone(880, 880, 0, .07, 'triangle', .09); tone(587, 587, .06, .11, 'triangle', .09); break;
+      case 'short':     tone(196, 82, 0, .28, 'sawtooth', .07); break;
+      case 'coverWin':  [523, 659, 784].forEach((f, i) => tone(f, f, i * .07, .13, 'triangle', .10)); break;
+      case 'coverLose': tone(330, 165, 0, .30, 'triangle', .10); break;
+      case 'boom':      tone(392, 49, 0, .70, 'sawtooth', .12); tone(196, 36, .05, .65, 'square', .06); break;
+      case 'ach':       [523, 659, 784, 1047].forEach((f, i) => tone(f, f, i * .09, .17, 'triangle', .11)); break;
+      case 'warn':      tone(740, 740, 0, .09, 'square', .05); tone(740, 740, .13, .09, 'square', .05); break;
+      case 'day':       tone(440, 440, 0, .05, 'sine', .04); break;
+    }
+  } catch(e){}
+}
+function toggleSound(){
+  soundOn = !soundOn;
+  try { localStorage.setItem('baocang_sound', soundOn ? '1' : '0'); } catch(e){}
+  const b = document.getElementById('sound-btn');
+  if (b) b.innerText = soundOn ? '🔊 音效开' : '🔇 音效关';
+  if (soundOn) sfx('buy');
+}
+
 function buy(id, amount){
 if (G.shorts && G.shorts[id]) return flash('🚫 你正做空该板块，先回补再买入——多空不能对锁。');
 const price = G.prices[id];
@@ -463,6 +511,7 @@ h.avgCost = (h.avgCost*h.shares + price*shares) / (h.shares + shares);
 h.shares += shares; h.boughtToday += shares; G.cash -= amount;
 G.trades.push({ id, ki: PRE_DAYS + G.day - 1, t:'B', p: price });
 flash(`📈 买入${fmt(amount)} 元（手续费 ${fmt(fee)}）。T+1，明天才能卖。`);
+sfx('buy');
 if ((G.lastChange[id] || 0) >= 0.05) frogSay(pick(FROG_LINES.chase));
 else if (amount >= 30000 && Math.random() < 0.5) frogSay(pick(FROG_LINES.bigBuy));
 render();
@@ -476,6 +525,7 @@ const shares = sellable * frac, gross = shares * G.prices[id], fee = gross*FEE;
 h.shares -= shares; G.cash += gross - fee;
 G.trades.push({ id, ki: PRE_DAYS + G.day - 1, t:'S', p: G.prices[id] });
 flash(`📉 卖出回款 ${fmt(gross-fee)} 元（手续费 ${fmt(fee)}）。`);
+sfx('sell');
 if (h.avgCost > 0 && Math.random() < 0.7){
 if (G.prices[id] > h.avgCost * 1.15) frogSay(pick(FROG_LINES.sellWin));
 else if (G.prices[id] < h.avgCost * 0.9) frogSay(pick(FROG_LINES.sellLose));
@@ -497,6 +547,7 @@ function shortOpen(id, amount){
   G.trades.push({ id, ki: PRE_DAYS + G.day - 1, t:'S', p: price });
   flash(`🐻 做空 ${S(id).name}：借券卖出到账 ${fmt(got)} 元（手续费 ${fmt(fee)}），欠券商 ${shares.toFixed(1)} 股。跌了回补赚差价，涨上天有你好果子吃。`);
   frogSay(pick(FROG_LINES.shortOpen));
+  sfx('short');
   render();
 }
 function shortCover(id){
@@ -513,6 +564,7 @@ function shortCover(id){
   flash(pnl >= 0 ? `🎉 回补成功！这笔空单赚了 ${fmt(pnl)} 元，见好就收是门手艺。`
                  : `😖 回补完成，这笔空单亏了 ${fmt(-pnl)} 元。做空的学费，交了。`);
   frogSay(pick(pnl >= 0 ? FROG_LINES.coverWin : FROG_LINES.coverLose));
+  sfx(pnl >= 0 ? 'coverWin' : 'coverLose');
   render();
 }
 function checkShorts(){
@@ -537,11 +589,13 @@ function checkShorts(){
         <p>🎓 戒赌课：<b>做多最多亏光，做空的亏损没有上限。</b>股价涨多少，你就能亏多少——空头的天花板，是没有天花板。</p>
         <div class="btnrow"><button onclick="closeModal()">认栽</button></div>`);
       frogSay('早跟你说了：空头的天花板，是没有天花板。');
+      sfx('boom');
       break;
     } else if (ratio >= 1.6 && !sh.warned){
       sh.warned = true;
       flash(`⚠️ 追保警告：你做空的 ${S(id).name} 回补成本已涨到开仓的 ${ratio.toFixed(1)} 倍！涨到 2 倍，券商将强制回补。`);
       frogSay('券商在给你打电话了，听见没？');
+      sfx('warn');
     } else if (ratio < 1.3){ sh.warned = false; }
   }
 }
@@ -605,6 +659,7 @@ function liquidateMargin(reason){
 const m = G.margin, st = marginStatus();
 if (G.limitDown[m.sector] && reason==='force') return false; // 跌停卖不出去，顺延
 G.trades.push({ id: m.sector, ki: PRE_DAYS + G.day - 1, t:'S', p: G.prices[m.sector] });
+sfx('boom');
 G.cash += Math.max(0, st.eqv); G.margin = null;
 flash(`🧨 配资平仓（${reason==='force'?'强制':'主动'}）：仓位清零，拿回 ${fmt(Math.max(0,st.eqv))} 元。`);
 return true;
@@ -672,6 +727,7 @@ render();
 function nextDay(){
 if (!G || G.over) return;
 if (G.day > DAYS) return settle();
+sfx('day');
 const { ev, divMsg, pnl} = advanceDay();
 let msg = `📅 第 ${G.day-1} 天收盘`;
 msg += pnl >= 0? `，总资产 <span class="up">${fmt(equity())}</span>（+${(pnl*100).toFixed(1)}%）`
@@ -759,6 +815,7 @@ function render(){
   document.getElementById('equity-label').innerText = fmt(eq);
   document.getElementById('cash-label').innerText = fmt(G.cash);
   document.getElementById('debt-label').innerText = G.debt > 0 ? `⚠️ 欠款 ${fmt(G.debt)}` : '';
+  const _sb = document.getElementById('sound-btn'); if (_sb) _sb.innerText = soundOn ? '🔊 音效开' : '🔇 音效关';
   const mb = document.getElementById('margin-btn');
   mb.disabled = G.tilt < 50 && !G.margin;
   mb.innerText = G.margin ? `🏦 配资中 (1:${G.margin.lev})` : (G.tilt >= 50 ? '🏦 配资公司 🟢' : '🏦 配资公司 🔒');
@@ -1072,7 +1129,7 @@ function checkAch(pnl){
   for (const a of ACHIEVEMENTS){
     if (!ach[a.id] && a.test(pnl)){ ach[a.id] = Date.now(); fresh.push(a); }
   }
-  if (fresh.length){ try { localStorage.setItem(ACH_KEY, JSON.stringify(ach)); } catch(e){} }
+  if (fresh.length){ try { localStorage.setItem(ACH_KEY, JSON.stringify(ach)); } catch(e){} sfx('ach'); }
   return fresh;
 }
 function achBanner(){
@@ -1140,7 +1197,7 @@ renderBoard();
 renderAch();
 
 function gameOver(kind){
-  G.over = true; G.mocked = true; clearSave(); updateMascot();
+  G.over = true; sfx('boom'); G.mocked = true; clearSave(); updateMascot();
   recordScore(kind === 'debt' ? '💀 穿仓负债' : '💥 爆仓');
   const eq = equity();
   let html = '';
