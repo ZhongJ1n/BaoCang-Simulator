@@ -113,6 +113,20 @@
   body.tilted #topbar { border-color:#f44336; }
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(1.5px)} 75%{transform:translateX(-1.5px)} }
 
+  /* ============ 亏神榜 ============ */
+  .board { background:#141922; border:1px solid #262d3d; border-radius:10px;
+    padding:10px 12px; margin-top:12px; text-align:left; }
+  .board h3 { margin:2px 0 8px; font-size:15px; color:#f0b90b; }
+  .bempty { color:#8a919e; font-size:13px; padding:6px 0; }
+  .brow { display:flex; align-items:center; gap:8px; padding:5px 0;
+    border-top:1px solid #1e2534; font-size:13px; }
+  .brank { width:22px; text-align:center; flex:none; }
+  .bname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bloss { color:#f6465d; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
+  .bwin { color:#2ebd85; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
+  .bend { color:#8a919e; font-size:11px; flex:none; }
+  .bfoot { color:#5c6470; font-size:11px; margin-top:8px; text-align:right; }
+
   /* ============ 奶蛙吉祥物 ============ */
   #game-screen { position:relative; }
   .hero-frog { display:block; height:168px; width:auto; margin:8px auto 4px;
@@ -172,6 +186,7 @@
       本游戏纯属虚构，所有行情由随机数生成，不构成任何投资建议。<br>
       游戏想告诉你的是：<b>赌徒心态 + 杠杆 = 爆仓</b>，现实中请远离赌博与非法配资。
     </div>
+    <div id="board" class="board"></div>
   </div>
 
   <!-- 游戏主界面 -->
@@ -873,8 +888,50 @@ function drawSettleChart(){
 }
 
 /* ============ 结算与结局 ============ */
+/* ============ 亏神榜（本机记录；SCORES_API 接好后可全网同步） ============ */
+const SCORES_KEY = 'baocang_scores_v1';
+const SCORES_API = '';
+function loadScores(){
+  try { return JSON.parse(localStorage.getItem(SCORES_KEY)) || []; } catch(e){ return []; }
+}
+function recordScore(endLabel){
+  if (!G || G.recorded) return; G.recorded = true;
+  const eq = Math.round(equity());  // equity() 已是扣除负债后的净值
+  const entry = { name: G.playerName || '无名韭菜', eq, pnl: eq - 100000,
+    days: Math.min(G.day, DAYS), end: endLabel, seed: G.seed, ts: Date.now() };
+  const list = loadScores(); list.push(entry);
+  list.sort((a, b) => a.pnl - b.pnl);
+  try { localStorage.setItem(SCORES_KEY, JSON.stringify(list.slice(0, 100))); } catch(e){}
+  if (SCORES_API){
+    try { fetch(SCORES_API, { method:'POST', mode:'no-cors',
+      headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(entry) }); } catch(e){}
+  }
+}
+function escHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderBoard(){
+  const el = document.getElementById('board'); if (!el) return;
+  const all = loadScores(), list = all.slice(0, 10);
+  if (!list.length){
+    el.innerHTML = '<h3>🏆 亏神榜</h3><div class="bempty">暂无记录。来亏出第一个传说吧。</div>';
+    return;
+  }
+  const medals = ['👑','🥈','🥉'];
+  el.innerHTML = '<h3>🏆 亏神榜 · 亏得越多越光荣</h3>' + list.map((s, i) => {
+    const d = new Date(s.ts), when = (d.getMonth()+1) + '/' + d.getDate();
+    const loss = s.pnl < 0 ? '<span class="bloss">-' + fmt(-s.pnl) + '</span>'
+                           : '<span class="bwin">+' + fmt(s.pnl) + '</span>';
+    return `<div class="brow"><span class="brank">${medals[i] || (i+1)}</span>` +
+      `<span class="bname">${escHtml(s.name)}</span>${loss}` +
+      `<span class="bend">${s.end} · ${s.days}天 · ${when}</span></div>`;
+  }).join('') + `<div class="bfoot">本机已记录 ${all.length} 局 · 按亏损额排名</div>`;
+}
+renderBoard();
+
 function gameOver(kind){
   G.over = true; G.mocked = true; clearSave(); updateMascot();
+  recordScore(kind === 'debt' ? '💀 穿仓负债' : '💥 爆仓');
   const eq = equity();
   let html = '';
   if (kind === 'debt'){
@@ -896,9 +953,10 @@ function gameOver(kind){
 }
 function settle(){
   G.over = true;
-  const eq = equity() - G.debt, lie = G.lieCash + G.lieShares*G.prices.bank;
+  const eq = equity(), lie = G.lieCash + G.lieShares*G.prices.bank;
   G.mocked = eq < 100000;  // 亏了才值得被蛙笑
   clearSave(); updateMascot();
+  recordScore('🏁 活到结算');
   let verdict, cls;
   if (eq > lie && eq >= 100000){ verdict='🏆 活下来了，还跑赢了躺平。你是万中无一的冷静派。'; cls='up'; }
   else if (eq >= 100000){ verdict='😐 保住本金，但跑输了躺平线——折腾了一整月，不如第一天买完就删软件。'; cls='flat'; }
