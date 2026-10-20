@@ -12,11 +12,14 @@
   #app { max-width:640px; margin:0 auto; padding:10px 10px 120px; }
   .hidden { display:none !important; }
 
-  /* 顶部信息栏：吸顶 */
+  /* 吸顶头：顶栏+消息+K线图做成一个整块，不留缝、不穿模 */
+  #stickyhead { position:sticky; top:0; z-index:40; background:#101318;
+                margin:-10px -10px 12px; padding:12px 10px 10px;
+                box-shadow:0 12px 24px rgba(0,0,0,.4); }
+  /* 顶部信息栏 */
   #topbar { display:flex; justify-content:space-between; align-items:center;
             background:#1a1f27; border-radius:10px; padding:10px 12px; margin-bottom:10px;
-            border:1px solid transparent;
-            position:sticky; top:8px; z-index:40; box-shadow:0 6px 18px rgba(0,0,0,.45); }
+            border:1px solid transparent; }
   #topbar .day { font-size:16px; font-weight:bold; color:#f0b90b; }
   #topbar .money { font-size:15px; }
   #tiltbar-wrap { margin-top:6px; }
@@ -36,9 +39,8 @@
                 border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px; }
   #rumor-card .btnrow { margin-top:8px; margin-bottom:0; }
 
-  /* K线图：吸顶跟随（钉在资产栏下方） */
-  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:10px;
-              position:sticky; top:96px; z-index:35; box-shadow:0 6px 18px rgba(0,0,0,.45); }
+  /* K线图（位于吸顶头内，随整块一起钉住） */
+  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:0; }
   #chartbox .chart-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
   #chartbox .chart-head .nm { font-size:15px; font-weight:bold; }
   #chartbox .chart-head .pc { font-size:14px; }
@@ -135,6 +137,7 @@
 
   <!-- 游戏主界面 -->
   <div id="game-screen" class="hidden">
+    <div id="stickyhead">
     <div id="topbar">
       <div>
         <div class="day" id="day-label">第 1 / 30 天</div>
@@ -159,6 +162,7 @@
       </div>
       <canvas id="chart" height="180"></canvas>
     </div>
+    </div><!-- /stickyhead -->
 
     <div id="sectors"></div>
 
