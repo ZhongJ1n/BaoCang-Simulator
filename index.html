@@ -97,6 +97,8 @@
   .modal h3 { margin:0 0 10px; color:#f0b90b; }
   .modal p { line-height:1.7; margin:8px 0; }
   .modal .btnrow { margin-top:14px; }
+  .modal button.sel { background:#f0b90b; color:#111; font-weight:bold;
+                      outline:2px solid #ffe082; }
 
   /* 开始界面 */
   #start-screen { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column;
@@ -463,20 +465,29 @@ const cash = G.cash;
 showModal(`<h3>🏦 场外配资公司</h3>
 <p>老板叼着烟：兄弟，看你骨骼惊奇。你这点钱炒股太慢了——<b>押上身家，老哥借你钱</b>，1:10 走起，财富自由就差一个涨停。</p>
 <p>📜 规则：借的钱要还。亏到保证金一半触发<b>警戒线</b>，亏到只剩三成<b>强制平仓</b>。要是跌停卖不出去亏穿了——<b style="color:#f44336">倒欠我的钱，可别想跑</b>。</p>
-<p>选板块：${SECTORS.map(s=>`<button onclick="marginPick('${s.id}')" style="margin:2px">${s.name}</button>`).join('')}</p>
-<p>杠杆：<button onclick="marginLev(2)">1:2</button> <button onclick="marginLev(5)">1:5</button> <button onclick="marginLev(10)" class="danger">1:10 梭哈</button></p>
+<p>选板块：${SECTORS.map(s=>`<button id="msec-${s.id}" onclick="marginPick('${s.id}')" style="margin:2px">${s.name}</button>`).join('')}</p>
+<p>杠杆：<button id="mlev-2" onclick="marginLev(2)">1:2</button> <button id="mlev-5" onclick="marginLev(5)">1:5</button> <button id="mlev-10" onclick="marginLev(10)">1:10 梭哈</button></p>
 <p class="meta">本金默认用你全部现金 ${fmt(cash)} 元。选好板块和杠杆后点确认。</p>
 <div class="btnrow"><button onclick="closeModal()">算了，我不借</button>
 <button class="danger" onclick="confirmMargin()">签合同，借！</button></div>
 <div id="margin-preview" style="color:#f0b90b"></div>`);
+paintMargin();
 }
 let marginChoice = { sector:'ai', lev:5};
-function marginPick(id){ marginChoice.sector = id; previewMargin();}
-function marginLev(l){ marginChoice.lev = l; previewMargin();}
+function marginPick(id){ marginChoice.sector = id; paintMargin();}
+function marginLev(l){ marginChoice.lev = l; paintMargin();}
+function paintMargin(){
+SECTORS.forEach(s=>{ const el = document.getElementById('msec-'+s.id);
+if (el) el.classList.toggle('sel', s.id === marginChoice.sector); });
+[2,5,10].forEach(l=>{ const el = document.getElementById('mlev-'+l);
+if (el) el.classList.toggle('sel', l === marginChoice.lev); });
+previewMargin();
+}
 function previewMargin(){
 const p = G.cash, total = p * marginChoice.lev;
+const sname = (SECTORS.find(s=>s.id===marginChoice.sector)||{}).name || '';
 document.getElementById('margin-preview').innerText =
-`📄 拟签：本金 ${fmt(p)}，借入 ${fmt(total-p)}，总仓位 ${fmt(total)} 买（1:${marginChoice.lev}）`;
+`📄 拟签：本金 ${fmt(p)}，借入 ${fmt(total-p)}，总仓位 ${fmt(total)}，全仓买【${sname}】（1:${marginChoice.lev}）`;
 }
 function confirmMargin(){
 const p = G.cash; if (p < 1000) return;
