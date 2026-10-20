@@ -151,6 +151,13 @@
   #frogbubble::after { content:''; position:absolute; right:-9px; bottom:16px;
     border:5px solid transparent; border-left:7px solid #f0b90b; border-right:none; }
   button.short { background:#5e35b1; }
+  #audio-panel { text-align:left; }
+  #audio-panel summary { cursor:pointer; font-weight:700; color:#f0b90b; padding:2px 0 6px; }
+  .arow { display:flex; align-items:center; gap:6px; padding:5px 0; border-top:1px solid #232833; font-size:12.5px; flex-wrap:wrap; }
+  .arow .alabel { min-width:118px; }
+  .arow .astate { flex:1; color:#9aa4b2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .arow button { background:#232833; color:#e8e8e8; border:1px solid #3a4152; border-radius:8px; padding:3px 9px; font-size:12px; cursor:pointer; }
+  .ahint { color:#9aa4b2; font-size:12px; line-height:1.5; padding-top:6px; }
   button.short.cover { background:#8e24aa; }
   .limitup-tag { color:#f6465d; font-size:11px; }
   #mascot { position:absolute; right:6px; bottom:80px; z-index:30;
@@ -209,6 +216,12 @@
     </div>
     <div id="board" class="board"></div>
     <div id="achwall" class="board"></div>
+    <details id="audio-panel" class="board">
+      <summary>🎵 自定义音效（自己上传，只存本机）</summary>
+      <div id="audio-slots"></div>
+      <div class="ahint">把你找到的音频传上来，对应时刻就放你的声音；没传的时刻用默认合成音。文件只存在这台设备的浏览器里，换设备 / 换浏览器要重新传；单个建议 10MB 以内。</div>
+    </details>
+    <input type="file" id="audio-file" accept="audio/*" style="display:none" onchange="onAudioFile(event)">
   </div>
 
   <!-- 游戏主界面 -->
@@ -479,6 +492,7 @@ function tone(f0, f1, delay, dur, type, vol){
 }
 function sfx(name){
   if (!soundOn) return;
+  if (playCustom(name)) return;   // 用户上传了这个时刻的音频就放他的
   try {
     switch(name){
       case 'buy':       tone(620, 620, 0, .07, 'triangle', .10); tone(930, 930, .06, .10, 'triangle', .10); break;
@@ -499,6 +513,7 @@ function toggleSound(){
   const b = document.getElementById('sound-btn');
   if (b) b.innerText = soundOn ? '🔊 音效开' : '🔇 音效关';
   if (soundOn) sfx('buy');
+  if (!soundOn) stopBgm(); else startBgm();
 }
 
 function buy(id, amount){
@@ -721,6 +736,7 @@ const name = document.getElementById('player-name').value.trim() || '无名韭�
 G = newGame(seed); G.playerName = name;
 document.getElementById('start-screen').classList.add('hidden');
 document.getElementById('game-screen').classList.remove('hidden');
+startBgm();
 flash(`📻 ${name} 入市。种子 ${seed}（把种子发给朋友，用同一串=同一盘行情）。祝好运——虽然这游戏里好运没什么用。`);
 render();
 }
@@ -917,6 +933,7 @@ function resumeGame(){
     rng = mulberry32(hashSeed(G.seed + ':resume:' + G.day));   // 续玩从当前位置续随机流
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
+    startBgm();
     flash(`▶️ 欢迎回来，${G.playerName || '玩家'}。第 ${G.day} 天继续——上次你停在的，就是现在。`);
     render();
   } catch(e){}
@@ -1194,11 +1211,95 @@ async function renderBoard(){
     }
   } catch(e){ /* 超时/断网就停在本机榜 */ }
 }
+/* ============ 自定义音效：用户上传的音频存本机 IndexedDB，优先于合成音 ============ */
+const AUDIO_SLOTS = [
+  ['bgm', '🎵 背景音乐（循环）'], ['buy', '📈 买入'], ['sell', '📉 卖出'], ['short', '🐻 做空开仓'],
+  ['coverWin', '🎉 回补赚钱'], ['coverLose', '😖 回补亏钱'], ['boom', '💥 爆仓 / 强平'],
+  ['ach', '🏆 成就解锁'], ['warn', '⚠️ 追保警告'], ['day', '📅 下一天'],
+];
+const customAudio = {};   // slot -> objectURL；slot+'__name' 存文件名
+let bgmEl = null, pendingSlot = null;
+function idbOpen(){ return new Promise((res, rej) => {
+  if (typeof indexedDB === 'undefined') return rej(new Error('no idb'));
+  const r = indexedDB.open('baocang_audio', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('files');
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});}
+async function idbSet(slot, blob){ const db = await idbOpen(); return new Promise((res, rej) => {
+  const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put(blob, slot);
+  tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function idbGet(slot){ const db = await idbOpen(); return new Promise((res, rej) => {
+  const q = db.transaction('files').objectStore('files').get(slot);
+  q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error); }); }
+async function idbDel(slot){ const db = await idbOpen(); return new Promise((res, rej) => {
+  const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').delete(slot);
+  tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function loadCustomAudio(){
+  for (const [slot] of AUDIO_SLOTS){
+    try { const b = await idbGet(slot);
+      if (b){ if (customAudio[slot]) URL.revokeObjectURL(customAudio[slot]);
+        customAudio[slot] = URL.createObjectURL(b); customAudio[slot + '__name'] = b.name || '已上传'; }
+    } catch(e){}
+  }
+  renderAudioPanel();
+}
+function playCustom(name){
+  const url = customAudio[name]; if (!url) return false;
+  try { const a = new Audio(url); a.volume = 0.9; const p = a.play(); if (p) p.catch(() => {}); return true; }
+  catch(e){ return false; }
+}
+function ensureBgmEl(){ if (!bgmEl && customAudio.bgm){ bgmEl = new Audio(customAudio.bgm); bgmEl.loop = true; bgmEl.volume = 0.35; } }
+function startBgm(){
+  if (!soundOn || !customAudio.bgm) return;
+  const gs = document.getElementById('game-screen');
+  if (gs && gs.classList.contains('hidden') && !bgmEl) return;
+  try { ensureBgmEl(); if (bgmEl && bgmEl.paused){ const p = bgmEl.play(); if (p) p.catch(() => {}); } } catch(e){}
+}
+function stopBgm(){ try { if (bgmEl) bgmEl.pause(); } catch(e){} }
+function pickAudio(slot){ pendingSlot = slot; document.getElementById('audio-file').click(); }
+async function onAudioFile(ev){
+  const f = ev.target.files && ev.target.files[0]; ev.target.value = '';
+  if (!f || !pendingSlot) return;
+  const slot = pendingSlot; pendingSlot = null;
+  try {
+    await idbSet(slot, f);
+    if (customAudio[slot]) URL.revokeObjectURL(customAudio[slot]);
+    customAudio[slot] = URL.createObjectURL(f); customAudio[slot + '__name'] = f.name;
+    if (slot === 'bgm'){ if (bgmEl){ bgmEl.pause(); bgmEl = null; } previewAudio('bgm'); }
+    else previewAudio(slot);
+  } catch(e){}
+  renderAudioPanel();
+}
+function previewAudio(slot){
+  if (!soundOn) return;
+  if (slot === 'bgm'){ if (customAudio.bgm){ try { ensureBgmEl(); const p = bgmEl.play(); if (p) p.catch(() => {}); } catch(e){} } return; }
+  if (!playCustom(slot)) sfx(slot);
+}
+async function clearAudio(slot){
+  try { await idbDel(slot); } catch(e){}
+  if (customAudio[slot]) URL.revokeObjectURL(customAudio[slot]);
+  delete customAudio[slot]; delete customAudio[slot + '__name'];
+  if (slot === 'bgm' && bgmEl){ bgmEl.pause(); bgmEl = null; }
+  renderAudioPanel();
+}
+function renderAudioPanel(){
+  const box = document.getElementById('audio-slots'); if (!box) return;
+  box.innerHTML = AUDIO_SLOTS.map(([slot, label]) => {
+    const has = !!customAudio[slot];
+    return `<div class="arow"><span class="alabel">${label}</span>` +
+      `<span class="astate">${has ? '🎧 ' + escHtml(customAudio[slot + '__name'] || '已上传') : '默认合成音'}</span>` +
+      `<button onclick="pickAudio('${slot}')">${has ? '换一个' : '上传'}</button>` +
+      `<button onclick="previewAudio('${slot}')">试听</button>` +
+      (has ? `<button onclick="clearAudio('${slot}')">清除</button>` : '') + `</div>`;
+  }).join('');
+}
+
 renderBoard();
 renderAch();
+loadCustomAudio();
 
 function gameOver(kind){
-  G.over = true; sfx('boom'); G.mocked = true; clearSave(); updateMascot();
+  G.over = true; stopBgm(); sfx('boom'); G.mocked = true; clearSave(); updateMascot();
   recordScore(kind === 'debt' ? '💀 穿仓负债' : '💥 爆仓');
   const eq = equity();
   let html = '';
@@ -1220,6 +1321,7 @@ function gameOver(kind){
   showModal(html + achBanner() + endButtons(kind));
 }
 function settle(){
+  stopBgm();
   G.over = true;
   const eq = equity(), lie = G.lieCash + G.lieShares*G.prices.bank;
   G.mocked = eq < 100000;  // 亏了才值得被蛙笑
