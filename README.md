@@ -21,7 +21,7 @@
 
 ## 怎么玩
 
-- 在线玩（GitHub Pages）：`https://<你的用户名>.github.io/baocang-simulator/`
+- 在线玩（GitHub Pages）：`https://zhongj1n.github.io/BaoCang-Simulator/`
 - 本地玩：直接用浏览器打开 `index.html` 即可，无需联网、无需安装
 
 ## 技术
