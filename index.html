@@ -34,17 +34,24 @@
   .up { color:#f44336; } .down { color:#4caf50; } .flat { color:#9aa0aa; }
   canvas { width:100%; display:block; background:#0d1015; border-radius:6px; }
 
-  /* 板块列表 */
-  #sectors { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
-  .sector { background:#1a1f27; border-radius:10px; padding:9px 10px; cursor:pointer;
-            border:2px solid transparent; }
-  .sector.selected { border-color:#f0b90b; }
-  .sector .sname { font-weight:bold; font-size:13px; display:flex; justify-content:space-between; }
-  .sector .sprice { font-size:16px; margin:4px 0 2px; }
-  .sector .heat { height:5px; background:#2a2f3a; border-radius:3px; margin:5px 0 3px; overflow:hidden; }
+  /* 板块列表：自选股样式 */
+  #sectors { margin-bottom:10px; }
+  .sector { display:flex; align-items:center; gap:10px; padding:10px 8px; cursor:pointer;
+            border-bottom:1px solid #232833; border-radius:8px; }
+  .sector.selected { background:#1a1f27; }
+  .sector .sleft { flex:1; min-width:0; }
+  .sector .sname { font-weight:bold; font-size:16px; color:#fff; }
+  .sector .ssub { font-size:12px; color:#8a919c; margin-top:2px; white-space:nowrap;
+                   overflow:hidden; text-overflow:ellipsis; }
+  .sector canvas.spark { width:88px; height:40px; flex:none; }
+  .sector .sright { text-align:right; flex:none; }
+  .sector .sprice { font-size:16px; color:#fff; }
+  .sector .pill { display:inline-block; min-width:64px; text-align:center; margin-top:3px;
+                  padding:3px 8px; border-radius:6px; font-size:13px; color:#fff; }
+  .pill.up { background:#d32f2f; } .pill.down { background:#1d9e75; } .pill.flat { background:#3a4152; }
+  .sector .heat { height:4px; background:#2a2f3a; border-radius:2px; margin-top:5px; overflow:hidden; width:110px; margin-left:auto; }
   .sector .heat > div { height:100%; background:linear-gradient(90deg,#2196f3,#f0b90b,#f44336); }
-  .sector .meta { font-size:11px; color:#9aa0aa; }
-  .limitdown-tag { color:#4caf50; font-size:11px; font-weight:bold; }
+  .limitdown-tag { color:#26a69a; font-size:11px; font-weight:bold; }
 
   /* 交易面板 */
   #trade { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:10px; }
@@ -168,16 +175,40 @@ function pick(arr){ return arr[Math.floor(rng()*arr.length)]; }
 
 /* ============ 板块定义（照搬 A 股八大板块性格） ============ */
 const SECTORS = [
-  { id:'bank',   name:'银行红利', sigma:0.012, limit:0.10, dividend:true,  desc:'无聊，但活得久。每10天发股息。' },
-  { id:'ai',     name:'AI算力',   sigma:0.050, limit:0.20, dividend:false, desc:'叙事之王，拥挤之王。20cm。' },
-  { id:'ne',     name:'新能源',   sigma:0.035, limit:0.10, dividend:false, desc:'政策敏感，补贴与产能过剩之间横跳。' },
-  { id:'med',    name:'医药',     sigma:0.028, limit:0.10, dividend:false, desc:'平时温吞，集采一来单日暴击。' },
-  { id:'baijiu', name:'白酒消费', sigma:0.022, limit:0.10, dividend:false, desc:'跟着经济预期慢涨慢跌。' },
-  { id:'broker', name:'券商',     sigma:0.040, limit:0.10, dividend:false, desc:'牛市旗手，市场涨跌它都放大2倍。' },
-  { id:'estate', name:'地产',     sigma:0.025, limit:0.10, dividend:false, desc:'长期趴着，救市政策一出连拉涨停。' },
-  { id:'mil',    name:'军工',     sigma:0.045, limit:0.10, dividend:false, desc:'地缘新闻驱动，来得快去得更快。' },
+  { id:'bank',   name:'银行红利', sub:'工商银行 · 建设银行 · 农业银行', sigma:0.012, limit:0.10, dividend:true,  desc:'无聊，但活得久。每10天发股息。' },
+  { id:'ai',     name:'AI算力',   sub:'光模块 · 半导体 · AI服务器', sigma:0.050, limit:0.20, dividend:false, desc:'叙事之王，拥挤之王。20cm。' },
+  { id:'ne',     name:'新能源',   sub:'锂电池 · 光伏 · 储能', sigma:0.035, limit:0.10, dividend:false, desc:'政策敏感，补贴与产能过剩之间横跳。' },
+  { id:'med',    name:'医药',     sub:'创新药 · 医疗器械 · CXO', sigma:0.028, limit:0.10, dividend:false, desc:'平时温吞，集采一来单日暴击。' },
+  { id:'baijiu', name:'白酒消费', sub:'贵州茅台 · 五粮液 · 消费龙头', sigma:0.022, limit:0.10, dividend:false, desc:'跟着经济预期慢涨慢跌。' },
+  { id:'broker', name:'券商',     sub:'中信证券 · 华泰证券 · 牛市旗手', sigma:0.040, limit:0.10, dividend:false, desc:'牛市旗手，市场涨跌它都放大2倍。' },
+  { id:'estate', name:'地产',     sub:'万科 · 保利发展 · 地产链', sigma:0.025, limit:0.10, dividend:false, desc:'长期趴着，救市政策一出连拉涨停。' },
+  { id:'mil',    name:'军工',     sub:'航空发动机 · 航天 · 船舶', sigma:0.045, limit:0.10, dividend:false, desc:'地缘新闻驱动，来得快去得更快。' },
 ];
 function S(id){ return SECTORS.find(s=>s.id===id); }
+
+/* 开局前生成约3个月历史走势：让每个板块有"前史"，玩家可以先研究再下单（然后被现实教育） */
+const PRE_DAYS = 90;
+function genHistory(s){
+  let p = 100 * (0.72 + rng()*0.55);
+  const closes = [p];
+  let drift = (rng()-0.5)*0.004;
+  for (let i=1; i<PRE_DAYS; i++){
+    if (rng() < 0.07) drift = (rng()-0.5)*0.007;   // 趋势 regime 切换
+    let r = drift + s.sigma*randn();
+    r = Math.max(-s.limit, Math.min(s.limit, r));
+    p *= (1+r); closes.push(p);
+  }
+  const scale = 100 / closes[PRE_DAYS-1];           // 归一化：昨日收盘 = 100，与开局价衔接
+  const candles = [];
+  for (let i=0; i<PRE_DAYS; i++){
+    const c0 = closes[i]*scale;
+    const o0 = i===0 ? c0/(1+(rng()-0.5)*s.sigma) : closes[i-1]*scale;
+    const sw = s.sigma*Math.abs(randn())*0.9 + Math.abs(c0-o0)/c0*0.25;
+    candles.push({ o:o0, h:Math.max(o0,c0)*(1+sw*0.5), l:Math.min(o0,c0)*(1-sw*0.5),
+                   c:c0, v: 40+rng()*60+Math.abs(c0-o0)/Math.max(1,c0)*900, pre:true });
+  }
+  return candles;
+}
 
 /* ============ 游戏状态 ============ */
 const DAYS = 30, FEE = 0.001;
@@ -185,15 +216,23 @@ let G = null;
 
 function newGame(seedStr){
   rng = mulberry32(hashSeed(seedStr || 'default'));
-  const prices={}, histories={}, heat={}, hold={}, ohlc={};
+  const prices={}, histories={}, heat={}, hold={}, ohlc={}, lastChange={};
   // 初始热度照搬 2026 年 10 月的真实格局：AI 拥挤见顶、红利低位
   const initHeat = { ai:30, broker:14, ne:12, med:10, baijiu:10, bank:10, mil:8, estate:6 };
-  SECTORS.forEach(s=>{ prices[s.id]=100; histories[s.id]=[100]; heat[s.id]=initHeat[s.id];
-                       hold[s.id]={shares:0, boughtToday:0, avgCost:0}; ohlc[s.id]=[]; });
+  SECTORS.forEach(s=>{
+    const pre = genHistory(s);
+    ohlc[s.id] = pre;
+    histories[s.id] = pre.map(k=>k.c);
+    prices[s.id] = 100;
+    heat[s.id] = initHeat[s.id];
+    hold[s.id] = { shares:0, boughtToday:0, avgCost:0 };
+    const last = pre[pre.length-1], prev = pre[pre.length-2];
+    lastChange[s.id] = (last.c - prev.c)/prev.c;
+  });
   return {
     seed: seedStr, day:1, cash:100000, tilt:20, debt:0,
-    prices, histories, heat, hold, ohlc,
-    lastChange:{}, limitDown:{},
+    prices, histories, heat, hold, ohlc, lastChange,
+    limitDown:{},
     equityHist:[100000], lieHist:[100000],
     lieShares: 99900/100, lieCash: 100,   // 躺平线：第一天全仓银行红利
     margin:null, firstMarginRig:false, marginOpens:0,
@@ -495,19 +534,29 @@ function render(){
   mb.disabled = G.tilt < 50 && !G.margin;
   mb.innerText = G.margin ? `🏦 配资中 (1:${G.margin.lev})` : (G.tilt >= 50 ? '🏦 配资公司 🟢' : '🏦 配资公司 🔒');
 
-  /* 板块卡片 */
+  /* 板块列表：自选股样式（左名字+代表股 / 中迷你走势 / 右价格+涨跌胶囊） */
   const box = document.getElementById('sectors'); box.innerHTML = '';
   SECTORS.forEach(s=>{
-    const chg = G.lastChange[s.id] || 0, cls = chg>0.0005?'up':(chg<-0.0005?'down':'flat');
+    const chg = G.lastChange[s.id] || 0;
+    const pillCls = chg>0.0005?'up':(chg<-0.0005?'down':'flat');
     const h = G.hold[s.id], hv = h.shares * G.prices[s.id];
     const d = document.createElement('div');
     d.className = 'sector' + (s.id===selected ? ' selected':'');
     d.onclick = ()=>{ selected = s.id; render(); };
-    d.innerHTML = `<div class="sname"><span>${s.name}</span><span class="${cls}">${(chg*100).toFixed(1)}%</span></div>
-      <div class="sprice">${G.prices[s.id].toFixed(1)} ${G.limitDown[s.id]?'<span class="limitdown-tag">🧊跌停</span>':''}</div>
-      <div class="heat"><div style="width:${Math.min(100,G.heat[s.id]*2)}%"></div></div>
-      <div class="meta">热度 ${Math.round(G.heat[s.id])} · 持有 ${hv>1?fmt(hv):'—'}</div>`;
+    d.innerHTML = `
+      <div class="sleft">
+        <div class="sname">${s.name}${G.limitDown[s.id]?' <span class="limitdown-tag">🧊跌停</span>':''}</div>
+        <div class="ssub">${s.sub}</div>
+        <div class="ssub">热度 ${Math.round(G.heat[s.id])} · 持有 ${hv>1?fmt(hv):'—'}</div>
+      </div>
+      <canvas class="spark" width="176" height="80"></canvas>
+      <div class="sright">
+        <div class="sprice">${G.prices[s.id].toFixed(2)}</div>
+        <span class="pill ${pillCls}">${chg>=0?'+':''}${(chg*100).toFixed(2)}%</span>
+        <div class="heat"><div style="width:${Math.min(100,G.heat[s.id]*2)}%"></div></div>
+      </div>`;
     box.appendChild(d);
+    drawSpark(d.querySelector('canvas.spark'), s);
   });
 
   /* 交易面板 */
@@ -531,6 +580,32 @@ function render(){
   }
 
   drawChart();
+}
+
+/* ============ 迷你走势图 sparkline（渐变填充+基准虚线，苹果股市风） ============ */
+function drawSpark(cv, s){
+  const ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+  const data = G.ohlc[s.id].map(k=>k.c);
+  if (data.length < 2) return;
+  const min = Math.min(...data), max = Math.max(...data), rg = (max-min)||1;
+  const base = data[0];
+  const up = data[data.length-1] >= base;
+  const col = up ? '#f44336' : '#26a69a';
+  const px = i => 2 + i*(W-4)/(data.length-1);
+  const py = v => 6 + (max-v)/rg*(H-16);
+  /* 基准虚线（区间起点价位） */
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, py(base)); ctx.lineTo(W, py(base)); ctx.stroke();
+  ctx.setLineDash([]);
+  /* 走势线 + 渐变填充 */
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, up ? 'rgba(244,67,54,.45)' : 'rgba(38,166,154,.45)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.beginPath();
+  data.forEach((v,i)=>{ const x=px(i), y=py(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.lineTo(px(data.length-1), H); ctx.lineTo(px(0), H); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
 }
 
 /* ============ K线图（蜡烛+影线+成交量，红涨绿跌） ============ */
@@ -576,9 +651,16 @@ function drawChart(){
     ctx.fillRect(x-cw/2, vyTop + volH - vh, cw, vh);
     ctx.globalAlpha = 1;
   });
-  /* 底部日期轴 */
+  /* 底部日期轴：左侧为开局前约3个月历史，右侧为游戏天数 */
   ctx.fillStyle = '#9aa0aa';
-  for (let i=0; i<n; i+=5) ctx.fillText('D'+(i+1), px(i)-10, H-14);
+  for (let i=PRE_DAYS; i<n; i+=5) ctx.fillText('D'+(i-PRE_DAYS+1), px(i)-10, H-14);
+  ctx.fillStyle = '#6b7280';
+  ctx.fillText('← 过去3个月历史', 30, H-14);
+  if (n > PRE_DAYS){
+    ctx.strokeStyle = 'rgba(240,185,11,.5)'; ctx.lineWidth = 1; ctx.setLineDash([5,5]);
+    ctx.beginPath(); ctx.moveTo(px(PRE_DAYS-1)+((px(PRE_DAYS)-px(PRE_DAYS-1))/2), topPad); ctx.lineTo(px(PRE_DAYS-1)+((px(PRE_DAYS)-px(PRE_DAYS-1))/2), topPad+plotH); ctx.stroke();
+    ctx.setLineDash([]);
+  }
   const kLast = data[n-1];
   ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 20px sans-serif';
   ctx.fillText(`开${kLast.o.toFixed(1)} 高${kLast.h.toFixed(1)} 低${kLast.l.toFixed(1)} 收${kLast.c.toFixed(1)}`, 30, 34);
