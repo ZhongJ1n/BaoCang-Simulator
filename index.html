@@ -9,13 +9,16 @@
   body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
          background:#101318; color:#e8e8e8; font-size:14px;
          font-variant-numeric:tabular-nums; }
-  #app { max-width:640px; margin:0 auto; padding:10px 10px 120px; }
+  /* App式外壳：整页不滚，只有中间列表区滚动 —— 物理上无穿模 */
+  #app { max-width:640px; margin:0 auto; padding:10px 10px 0; width:100%;
+         height:100vh; height:100dvh; display:flex; flex-direction:column; }
+  #game-screen { display:flex; flex-direction:column; flex:1; min-height:0; }
+  #scrollarea { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+                padding-bottom:12px; }
   .hidden { display:none !important; }
 
-  /* 吸顶头：顶栏+消息+K线图做成一个整块，不留缝、不穿模 */
-  #stickyhead { position:sticky; top:0; z-index:40; background:#101318;
-                margin:-10px -10px 12px; padding:12px 10px 10px;
-                box-shadow:0 12px 24px rgba(0,0,0,.4); }
+  /* 头部区（顶栏+消息+K线图）：固定不滚 */
+  #stickyhead { flex:none; }
   /* 顶部信息栏 */
   #topbar { display:flex; justify-content:space-between; align-items:center;
             background:#1a1f27; border-radius:10px; padding:10px 12px; margin-bottom:10px;
@@ -39,8 +42,8 @@
                 border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:13px; }
   #rumor-card .btnrow { margin-top:8px; margin-bottom:0; }
 
-  /* K线图（位于吸顶头内，随整块一起钉住） */
-  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:0; }
+  /* K线图（头部区内） */
+  #chartbox { background:#1a1f27; border-radius:10px; padding:10px; margin-bottom:10px; }
   #chartbox .chart-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
   #chartbox .chart-head .nm { font-size:15px; font-weight:bold; }
   #chartbox .chart-head .pc { font-size:14px; }
@@ -80,10 +83,9 @@
   .danger { background:#b71c1c; }
   button:disabled { opacity:.4; }
 
-  /* 底部固定操作栏（含 iPhone 安全区） */
-  #actionbar { position:fixed; left:0; right:0; bottom:0; background:#141920;
-               border-top:1px solid #2a2f3a; padding:10px; display:flex; gap:8px;
-               max-width:640px; margin:0 auto; z-index:40;
+  /* 底部操作栏：外壳的固定底座（含 iPhone 安全区） */
+  #actionbar { flex:none; background:#141920; border-top:1px solid #2a2f3a;
+               padding:10px; display:flex; gap:8px; margin:0 -10px;
                padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
   #actionbar button { flex:1; padding:12px; font-size:15px; }
 
@@ -97,8 +99,8 @@
   .modal .btnrow { margin-top:14px; }
 
   /* 开始界面 */
-  #start-screen { min-height:90vh; display:flex; flex-direction:column; justify-content:center;
-                  text-align:center; padding:24px; }
+  #start-screen { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column;
+                  justify-content:center; text-align:center; padding:24px; }
   #start-screen h1 { font-size:36px; margin:0 0 6px; color:#f0b90b; letter-spacing:3px;
                      text-shadow:0 0 26px rgba(240,185,11,.35); }
   #start-screen .sub { color:#9aa0aa; margin-bottom:20px; }
@@ -164,6 +166,7 @@
     </div>
     </div><!-- /stickyhead -->
 
+    <div id="scrollarea">
     <div id="sectors"></div>
 
     <div id="trade">
@@ -172,6 +175,7 @@
       <div class="btnrow" id="buy-btns"></div>
       <div class="btnrow" id="sell-btns"></div>
     </div>
+    </div><!-- /scrollarea -->
 
     <div id="actionbar">
       <button class="primary" onclick="nextDay()">⏭ 下一天</button>
@@ -686,8 +690,8 @@ function drawSpark(cv, s){
 /* ============ K线图（蜡烛+影线+成交量，红涨绿跌） ============ */
 function drawChart(){
   const cv = document.getElementById('chart'), ctx = cv.getContext('2d');
-  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 520;
-  cv.style.height = '260px';
+  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 420;
+  cv.style.height = '210px';
   ctx.fillStyle = '#0d1015'; ctx.fillRect(0,0,W,H);
   const s = S(selected), data = G.ohlc[selected];
   document.getElementById('chart-name').innerText = s.name + ' · 日K';
