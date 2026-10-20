@@ -185,14 +185,14 @@ let G = null;
 
 function newGame(seedStr){
   rng = mulberry32(hashSeed(seedStr || 'default'));
-  const prices={}, histories={}, heat={}, hold={};
+  const prices={}, histories={}, heat={}, hold={}, ohlc={};
   // 初始热度照搬 2026 年 10 月的真实格局：AI 拥挤见顶、红利低位
   const initHeat = { ai:30, broker:14, ne:12, med:10, baijiu:10, bank:10, mil:8, estate:6 };
   SECTORS.forEach(s=>{ prices[s.id]=100; histories[s.id]=[100]; heat[s.id]=initHeat[s.id];
-                       hold[s.id]={shares:0, boughtToday:0, avgCost:0}; });
+                       hold[s.id]={shares:0, boughtToday:0, avgCost:0}; ohlc[s.id]=[]; });
   return {
     seed: seedStr, day:1, cash:100000, tilt:20, debt:0,
-    prices, histories, heat, hold,
+    prices, histories, heat, hold, ohlc,
     lastChange:{}, limitDown:{},
     equityHist:[100000], lieHist:[100000],
     lieShares: 99900/100, lieCash: 100,   // 躺平线：第一天全仓银行红利
@@ -262,7 +262,14 @@ function advanceDay(){
     if (ev && ev.shock[s.id]) r += ev.shock[s.id];
     if (G.margin && G.margin.sector===s.id && G.firstMarginRig) r += 0.05; // 配资养鱼：第一次给甜头
     r = Math.max(-s.limit, Math.min(s.limit, r));
-    G.prices[s.id] *= (1+r);
+    const open = G.prices[s.id], closeP = open*(1+r);
+    // 盘中最高/最低（影线）：由波动率和当日涨幅生成
+    const swing = s.sigma*Math.abs(randn())*0.9 + Math.abs(r)*0.25;
+    const high = Math.max(open,closeP)*(1+swing*0.5);
+    const low  = Math.min(open,closeP)*(1-swing*0.5);
+    const vol  = 40 + G.heat[s.id]*5 + Math.abs(r)*900 + rng()*40;  // 相对成交量
+    G.prices[s.id] = closeP;
+    G.ohlc[s.id].push({ o:open, h:high, l:low, c:closeP, v:vol });
     G.histories[s.id].push(G.prices[s.id]);
     G.lastChange[s.id] = r;
     G.limitDown[s.id] = (r <= -s.limit + 0.001);
@@ -458,11 +465,15 @@ const r = G.pendingRumor; if (!r) return render();
 const amt = Math.min(G.cash * 0.5, G.cash);
 if (amt >= 100) buy(r.target, amt);
 const s = S(r.target);
-if (r.trap){ G.prices[r.target] *= 0.92; G.histories[r.target].push(G.prices[r.target]);
+if (r.trap){ G.prices[r.target] *= 0.92;
 flash(`🕳️ 消息是假的！${s.name} 是庄家出货，你刚接盘就跌了 8%。消息，就是用来坑信消息的人的。`);
-} else { G.prices[r.target] *= 1.08; G.histories[r.target].push(G.prices[r.target]);
+} else { G.prices[r.target] *= 1.08;
 flash(`🎰 消息居然是真的，${s.name} 涨了 8%！别高兴——靠消息赢的钱，最后都靠消息输回去。`);
 }
+/* 同步更新当日K线 */
+const klast = G.ohlc[r.target][G.ohlc[r.target].length-1];
+if (klast){ klast.c = G.prices[r.target]; klast.h = Math.max(klast.h, klast.c); klast.l = Math.min(klast.l, klast.c); klast.v *= 2; }
+G.histories[r.target].push(G.prices[r.target]);
 G.pendingRumor = null; render();
 }
 function ignoreRumor(){ G.pendingRumor = null; flash('📩 你把小道消息删了。无聊，但保命。'); render();}
@@ -522,30 +533,59 @@ function render(){
   drawChart();
 }
 
-/* ============ K线/折线图 ============ */
+/* ============ K线图（蜡烛+影线+成交量，红涨绿跌） ============ */
 function drawChart(){
   const cv = document.getElementById('chart'), ctx = cv.getContext('2d');
-  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 360;
+  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 520;
+  cv.style.height = '260px';
   ctx.fillStyle = '#0d1015'; ctx.fillRect(0,0,W,H);
-  const s = S(selected), hist = G.histories[selected];
-  document.getElementById('chart-name').innerText = s.name;
+  const s = S(selected), data = G.ohlc[selected];
+  document.getElementById('chart-name').innerText = s.name + ' · 日K';
   const chg = G.lastChange[selected] || 0;
   const el = document.getElementById('chart-pct');
   el.innerText = `今日 ${(chg*100).toFixed(1)}% · 热度 ${Math.round(G.heat[selected])}`;
   el.className = 'pc ' + (chg>0.0005?'up':(chg<-0.0005?'down':'flat'));
-  if (hist.length < 2) return;
-  const min = Math.min(...hist), max = Math.max(...hist), rg = (max-min)||1;
-  const px = i => 20 + i*(W-40)/Math.max(1,hist.length-1);
-  const py = v => H-20 - (v-min)/rg*(H-50);
-  ctx.strokeStyle = hist[hist.length-1]>=hist[hist.length-2] ? '#f44336':'#4caf50';
-  ctx.lineWidth = 3; ctx.beginPath();
-  hist.forEach((v,i)=>{ const x=px(i),y=py(v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
-  ctx.stroke();
-  ctx.fillStyle = '#9aa0aa'; ctx.font = '20px sans-serif';
-  ctx.fillText(max.toFixed(1), W-70, 24); ctx.fillText(min.toFixed(1), W-70, H-10);
-  /* 跌停警戒线提示 */
-  if (G.limitDown[selected]){ ctx.fillStyle='#4caf50'; ctx.font='bold 24px sans-serif';
-    ctx.fillText('🧊 跌停封死 · 卖不出去', 20, 30); }
+  ctx.font = '20px sans-serif';
+  if (!data.length){ ctx.fillStyle='#9aa0aa'; ctx.fillText('开盘后生成K线', 30, 60); return; }
+  const n = data.length;
+  let max = -1e18, min = 1e18;
+  data.forEach(k=>{ max = Math.max(max,k.h); min = Math.min(min,k.l); });
+  const pad = (max-min)*0.08 || 1; max += pad; min -= pad;
+  const plotH = H*0.58, volH = H*0.11, topPad = 96;
+  const px = i => 30 + i*((W-120)/Math.max(1, n-1));
+  const py = v => topPad + (max-v)/(max-min)*plotH;
+  /* 网格线 + 右侧价格轴 */
+  for (let g=0; g<=4; g++){
+    const v = max - (max-min)*g/4, y = py(v);
+    ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(30,y); ctx.lineTo(W-90,y); ctx.stroke();
+    ctx.fillStyle = '#9aa0aa'; ctx.fillText(v.toFixed(1), W-84, y+7);
+  }
+  const volMax = Math.max(...data.map(k=>k.v)) || 1;
+  const cw = Math.max(4, (W-120)/Math.max(1,n) * 0.55);
+  /* 蜡烛 + 成交量 */
+  data.forEach((k,i)=>{
+    const up = k.c >= k.o, col = up ? '#f44336' : '#26a69a';
+    const x = px(i);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, py(k.h)); ctx.lineTo(x, py(k.l)); ctx.stroke();  // 影线
+    const yO = py(k.o), yC = py(k.c);
+    ctx.fillRect(x-cw/2, Math.min(yO,yC), cw, Math.max(3, Math.abs(yO-yC)));        // 实体
+    const vh = k.v/volMax*volH, vyTop = topPad + plotH + 28;
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(x-cw/2, vyTop + volH - vh, cw, vh);
+    ctx.globalAlpha = 1;
+  });
+  /* 底部日期轴 */
+  ctx.fillStyle = '#9aa0aa';
+  for (let i=0; i<n; i+=5) ctx.fillText('D'+(i+1), px(i)-10, H-14);
+  const kLast = data[n-1];
+  ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 20px sans-serif';
+  ctx.fillText(`开${kLast.o.toFixed(1)} 高${kLast.h.toFixed(1)} 低${kLast.l.toFixed(1)} 收${kLast.c.toFixed(1)}`, 30, 34);
+  ctx.font = '18px sans-serif'; ctx.fillStyle = '#6b7280';
+  ctx.fillText('成交量（相对）', 30, topPad + plotH + 20);
+  if (G.limitDown[selected]){ ctx.fillStyle='#26a69a'; ctx.font='bold 22px sans-serif';
+    ctx.fillText('🧊 跌停封死 · 卖不出去', 30, 64); }
 }
 
 function drawSettleChart(){
