@@ -112,6 +112,7 @@
     <input id="player-name" placeholder="输入你的名字（比如：韭菜本菜）" maxlength="12">
     <input id="seed-input" placeholder="行情种子（留空随机；和朋友用同一串可同场竞技）" maxlength="20">
     <button class="primary" style="width:100%;padding:14px;font-size:16px" onclick="startGame()">开 始 炒 股</button>
+    <button id="resume-btn" class="hidden" style="width:100%;padding:12px;font-size:15px;margin-top:8px" onclick="resumeGame()">▶️ 继续上次对局</button>
     <div class="disclaimer">
       本游戏纯属虚构，所有行情由随机数生成，不构成任何投资建议。<br>
       游戏想告诉你的是：<b>赌徒心态 + 杠杆 = 爆仓</b>，现实中请远离赌博与非法配资。
@@ -237,7 +238,7 @@ function newGame(seedStr){
     lieShares: 99900/100, lieCash: 100,   // 躺平线：第一天全仓银行红利
     margin:null, firstMarginRig:false, marginOpens:0,
     loanOffered:false, loanRefused:false, emptyDays:0,
-    lastEquity:100000, over:false, log:[],
+    lastEquity:100000, over:false, log:[], trades:[],
   };
 }
 
@@ -343,6 +344,8 @@ function advanceDay(){
 'use strict';
 /* ============ 交易（T+1 / 手续费 / 跌停卖不出） ============ */
 let selected = 'bank';
+let inspectIdx = -1;      // K线图点按查看的蜡烛序号
+let chartGeom = null;     // drawChart 记录的几何信息，供点按换算
 function flash(msg){ document.getElementById('newsflash').innerHTML = msg;}
 
 function buy(id, amount){
@@ -352,6 +355,7 @@ if (amount < 100) return flash('💸 现金不够。');
 const fee = amount*FEE, shares = (amount-fee)/price, h = G.hold[id];
 h.avgCost = (h.avgCost*h.shares + price*shares) / (h.shares + shares);
 h.shares += shares; h.boughtToday += shares; G.cash -= amount;
+G.trades.push({ id, ki: PRE_DAYS + G.day - 1, t:'B', p: price });
 flash(`📈 买入${fmt(amount)} 元（手续费 ${fmt(fee)}）。T+1，明天才能卖。`);
 render();
 }
@@ -362,6 +366,7 @@ const sellable = h.shares - h.boughtToday; // T+1
 if (sellable <= 0) return flash('⏳ 今天买的今天不能卖（T+1），先拿着过夜吧。');
 const shares = sellable * frac, gross = shares * G.prices[id], fee = gross*FEE;
 h.shares -= shares; G.cash += gross - fee;
+G.trades.push({ id, ki: PRE_DAYS + G.day - 1, t:'S', p: G.prices[id] });
 flash(`📉 卖出回款 ${fmt(gross-fee)} 元（手续费 ${fmt(fee)}）。`);
 render();
 }
@@ -400,6 +405,7 @@ const p = G.cash; if (p < 1000) return;
 const lev = marginChoice.lev, total = p * lev, borrowed = total - p;
 const price = G.prices[marginChoice.sector];
 G.margin = { sector: marginChoice.sector, lev, principal: p, borrowed, shares: total*(1-FEE)/price};
+G.trades.push({ id: marginChoice.sector, ki: PRE_DAYS + G.day - 1, t:'B', p: price });
 G.cash = 0; G.marginOpens++;
 if (G.marginOpens === 1) G.firstMarginRig = true; // 养鱼：第一次给甜头
 closeModal(); flash(`🏦 配资签成！1:${lev} 仓位 ${fmt(total)} 砸进。老板笑着目送你离开。`);
@@ -414,6 +420,7 @@ return { val, eqv, ratio: eqv / m.principal};
 function liquidateMargin(reason){
 const m = G.margin, st = marginStatus();
 if (G.limitDown[m.sector] && reason==='force') return false; // 跌停卖不出去，顺延
+G.trades.push({ id: m.sector, ki: PRE_DAYS + G.day - 1, t:'S', p: G.prices[m.sector] });
 G.cash += Math.max(0, st.eqv); G.margin = null;
 flash(`🧨 配资平仓（${reason==='force'?'强制':'主动'}）：仓位清零，拿回 ${fmt(Math.max(0,st.eqv))} 元。`);
 return true;
@@ -468,6 +475,7 @@ flash('🛡️ 你划掉了网贷广告。这一划，值千金。');}
 
 /* ============ 主流程 ============ */
 function startGame(){
+clearSave();
 const seedInput = document.getElementById('seed-input').value.trim();
 const seed = seedInput || ('S' + Math.floor(Math.random()*90000+10000));
 const name = document.getElementById('player-name').value.trim() || '无名韭菜';
@@ -542,7 +550,7 @@ function render(){
     const h = G.hold[s.id], hv = h.shares * G.prices[s.id];
     const d = document.createElement('div');
     d.className = 'sector' + (s.id===selected ? ' selected':'');
-    d.onclick = ()=>{ selected = s.id; render(); };
+    d.onclick = ()=>{ selected = s.id; inspectIdx = -1; render(); };
     d.innerHTML = `
       <div class="sleft">
         <div class="sname">${s.name}${G.limitDown[s.id]?' <span class="limitdown-tag">🧊跌停</span>':''}</div>
@@ -580,7 +588,40 @@ function render(){
   }
 
   drawChart();
+  saveGame();
 }
+
+/* ============ 存档（localStorage)：被打断回来继续 ============ */
+const SAVE_KEY = 'baocang_save_v1';
+function saveGame(){
+  if (!G || G.over) return;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ G, selected })); } catch(e){}
+}
+function clearSave(){ try { localStorage.removeItem(SAVE_KEY); } catch(e){} }
+function resumeGame(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY); if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || !data.G || data.G.over) return;
+    G = data.G; selected = data.selected || 'bank'; inspectIdx = -1;
+    rng = mulberry32(hashSeed(G.seed + ':resume:' + G.day));   // 续玩从当前位置续随机流
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    flash(`▶️ 欢迎回来，${G.playerName || '玩家'}。第 ${G.day} 天继续——上次你停在的，就是现在。`);
+    render();
+  } catch(e){}
+}
+(function checkSave(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY); if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d && d.G && !d.G.over){
+      const b = document.getElementById('resume-btn');
+      if (b){ b.classList.remove('hidden');
+        b.innerText = `▶️ 继续上次对局（第 ${Math.min(d.G.day, DAYS)} 天 · ${d.G.playerName || '玩家'}）`; }
+    }
+  } catch(e){}
+})();
 
 /* ============ 迷你走势图 sparkline（渐变填充+基准虚线，苹果股市风） ============ */
 function drawSpark(cv, s){
@@ -651,6 +692,53 @@ function drawChart(){
     ctx.fillRect(x-cw/2, vyTop + volH - vh, cw, vh);
     ctx.globalAlpha = 1;
   });
+  chartGeom = { W, n };
+  /* MA5 / MA10 均线 */
+  const closes = data.map(k=>k.c);
+  const ma = (per)=> closes.map((_,i)=> i<per-1 ? null : closes.slice(i-per+1, i+1).reduce((a,b)=>a+b,0)/per);
+  [['MA5', ma(5), '#ffd54f'], ['MA10', ma(10), '#ce93d8']].forEach(([nm, arr, col], li)=>{
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+    let started = false;
+    arr.forEach((v,i)=>{ if (v===null) return; const x=px(i), y=py(v); started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true; });
+    ctx.stroke();
+    const lastV = [...arr].reverse().find(v=>v!==null);
+    ctx.fillStyle = col; ctx.font = '18px sans-serif';
+    ctx.fillText(`${nm} ${lastV?lastV.toFixed(1):'--'}`, W-360+li*130, 64);
+  });
+  /* 持仓成本线 */
+  const hd = G.hold[selected];
+  if (hd.shares > 0.01 && hd.avgCost > 0){
+    const y = py(hd.avgCost);
+    ctx.strokeStyle = '#f0b90b'; ctx.lineWidth = 2; ctx.setLineDash([8,6]);
+    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(W-90, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#f0b90b'; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`你的成本 ${hd.avgCost.toFixed(1)}`, 34, y-8);
+  }
+  /* 买卖点标记 B / S */
+  (G.trades || []).filter(t=>t.id===selected).forEach(t=>{
+    const ki = Math.max(0, Math.min(n-1, t.ki));
+    const x = px(t.ki < n ? t.ki : n-1), k = data[ki];
+    const isB = t.t === 'B';
+    const y = isB ? py(k.l) + 24 : py(k.h) - 24;
+    ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI*2);
+    ctx.fillStyle = isB ? '#d32f2f' : '#1d9e75'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(t.t, x, y+6); ctx.textAlign = 'left';
+  });
+  /* 点按查看：选中K线的信息 */
+  if (inspectIdx >= 0 && inspectIdx < n){
+    const k = data[inspectIdx], x = px(inspectIdx);
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.setLineDash([5,5]);
+    ctx.beginPath(); ctx.moveTo(x, topPad); ctx.lineTo(x, topPad+plotH+volH+28); ctx.stroke(); ctx.setLineDash([]);
+    const prev = inspectIdx > 0 ? data[inspectIdx-1].c : k.o;
+    const chgp = (k.c - prev)/prev * 100;
+    const dayTxt = inspectIdx >= PRE_DAYS ? `第${inspectIdx-PRE_DAYS+1}天` : `历史第${inspectIdx+1}天`;
+    ctx.font = '18px sans-serif';
+    const info = `${dayTxt} 开${k.o.toFixed(1)} 高${k.h.toFixed(1)} 低${k.l.toFixed(1)} 收${k.c.toFixed(1)} ${chgp>=0?'+':''}${chgp.toFixed(1)}%`;
+    const tw = ctx.measureText(info).width;
+    ctx.fillStyle = 'rgba(20,24,32,.92)'; ctx.fillRect(24, 72, tw+20, 30);
+    ctx.fillStyle = '#fff'; ctx.fillText(info, 34, 94);
+  }
   /* 底部日期轴：左侧为开局前约3个月历史，右侧为游戏天数 */
   ctx.fillStyle = '#9aa0aa';
   for (let i=PRE_DAYS; i<n; i+=5) ctx.fillText('D'+(i-PRE_DAYS+1), px(i)-10, H-14);
@@ -697,7 +785,7 @@ function drawSettleChart(){
 
 /* ============ 结算与结局 ============ */
 function gameOver(kind){
-  G.over = true;
+  G.over = true; clearSave();
   const eq = equity();
   let html = '';
   if (kind === 'debt'){
@@ -715,10 +803,10 @@ function gameOver(kind){
       <p>你上头的时候按下的每一个按钮，手续费都替你记着账。复盘看看：<b>如果第一天全仓银行红利躺平不动，现在是 ${fmt(G.lieCash + G.lieShares*G.prices.bank)}。</b></p>
       <p>🎓 戒赌课第2课：<b>你输给的不是市场，是你自己的手。</b></p>`;
   }
-  showModal(html + endButtons());
+  showModal(html + endButtons(kind));
 }
 function settle(){
-  G.over = true;
+  G.over = true; clearSave();
   const eq = equity() - G.debt, lie = G.lieCash + G.lieShares*G.prices.bank;
   let verdict, cls;
   if (eq > lie && eq >= 100000){ verdict='🏆 活下来了，还跑赢了躺平。你是万中无一的冷静派。'; cls='up'; }
@@ -740,12 +828,104 @@ function settle(){
     <div>${ach.map(a=>`<span class="achieve">${a}</span>`).join('')}</div>
     <div class="poster"><div class="big">种子 ${G.seed}</div>
       <div>把种子发给朋友，同一盘行情比谁活得久——输的请奶茶 🧋</div></div>
-    ${endButtons()}`);
+    ${endButtons('settle')}`);
   drawSettleChart();
 }
-function endButtons(){
+function endButtons(kind){
   return `<div class="btnrow"><button class="primary" onclick="restart()">🔄 再来一局</button>
+    <button onclick="showPoster('${kind}')">📸 战绩海报</button>
     <button onclick="location.reload()">🏠 回首页</button></div>`;
+}
+
+/* ============ 战绩海报（导出图片，朋友圈/群聊传播） ============ */
+function wrapText(ctx, text, x, y, maxW, lineH){
+  let line = '', yy = y;
+  for (const ch of text){
+    const t = line + ch;
+    if (ctx.measureText(t).width > maxW && line){ ctx.fillText(line, x, yy); line = ch; yy += lineH; }
+    else line = t;
+  }
+  if (line) ctx.fillText(line, x, yy);
+  return yy;
+}
+function showPoster(kind){
+  const PW = 750, PH = 1150;
+  const cv = document.createElement('canvas'); cv.width = PW; cv.height = PH;
+  const ctx = cv.getContext('2d');
+  /* 背景 */
+  const bg = ctx.createLinearGradient(0, 0, 0, PH);
+  bg.addColorStop(0, '#1a1410'); bg.addColorStop(1, '#0d1015');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, PW, PH);
+  ctx.strokeStyle = '#f0b90b'; ctx.lineWidth = 6; ctx.strokeRect(12, 12, PW-24, PH-24);
+  let y = 80;
+  ctx.fillStyle = '#f0b90b'; ctx.font = 'bold 52px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('💥 爆仓模拟器', PW/2, y); y += 48;
+  ctx.fillStyle = '#9aa0aa'; ctx.font = '26px sans-serif';
+  ctx.fillText(`${G.playerName || '无名韭菜'} 的30天战绩`, PW/2, y); y += 44;
+  ctx.fillStyle = '#6b7280'; ctx.font = '24px sans-serif';
+  ctx.fillText(`行情种子 ${G.seed} · 同一串种子 = 同一盘行情`, PW/2, y); y += 66;
+  /* 大结局数字 */
+  ctx.textAlign = 'left';
+  let bigTxt, subTxt, verdict;
+  if (kind === 'debt'){
+    bigTxt = `💀 穿仓负债 倒欠 ${fmt(G.debt)} 元`; subTxt = `第 ${G.day} 天 · 跌停封死，逃生无门`;
+    verdict = '戒赌课第1课：杠杆不会放大你的运气，只会放大你的结局。10倍杠杆下，一个跌停就够了。';
+  } else if (kind === 'broke'){
+    bigTxt = `💥 10万 → ${fmt(equity())}`; subTxt = `第 ${G.day} 天 · 账户见底`;
+    verdict = '戒赌课第2课：你输给的不是市场，是你自己的手。手续费替你记得每一笔上头。';
+  } else {
+    const eq = equity() - G.debt, lie = G.lieCash + G.lieShares*G.prices.bank;
+    const r = ((eq/100000)-1)*100;
+    bigTxt = `终局 ${fmt(eq)} 元（${r>=0?'+':''}${r.toFixed(1)}%）`; subTxt = `躺平线 ${fmt(lie)} 元`;
+    verdict = eq > lie && eq >= 100000 ? '🏆 跑赢了躺平线！你是万中无一的冷静派。'
+      : eq >= 100000 ? '😐 保住本金但跑输躺平：折腾一整月，不如第一天买完就删软件。'
+      : '📉 少看盘、少动手，是散户唯一的护城河。';
+  }
+  ctx.fillStyle = '#f44336'; ctx.font = 'bold 38px sans-serif';
+  ctx.fillText(bigTxt, 50, y); y += 40;
+  ctx.fillStyle = '#9aa0aa'; ctx.font = '26px sans-serif';
+  ctx.fillText(subTxt, 50, y); y += 56;
+  /* 资金曲线面板 */
+  const hist = [...G.equityHist, equity()];
+  const cx = 50, cw = PW-100, chh = 240, cy = y;
+  ctx.fillStyle = '#0d1015'; ctx.fillRect(cx, cy, cw, chh);
+  const mn = Math.min(...hist, 100000)*0.99, mx = Math.max(...hist, 100000)*1.01;
+  const pxx = i => cx + 10 + i*(cw-20)/Math.max(1, hist.length-1);
+  const pyy = v => cy + chh - 14 - (v-mn)/Math.max(1,(mx-mn))*(chh-28);
+  ctx.setLineDash([6,6]); ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx+10, pyy(100000)); ctx.lineTo(cx+cw-10, pyy(100000)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = '#f0b90b'; ctx.lineWidth = 5; ctx.beginPath();
+  hist.forEach((v,i)=>{ const x=pxx(i), yy=pyy(v); i?ctx.lineTo(x,yy):ctx.moveTo(x,yy); });
+  ctx.stroke();
+  ctx.fillStyle = '#9aa0aa'; ctx.font = '22px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('你的资金曲线（金线） · 灰虚线 = 10万本金', cx+10, cy+chh-8);
+  y = cy + chh + 56;
+  /* verdict */
+  ctx.fillStyle = '#e8e8e8'; ctx.font = '26px sans-serif';
+  y = wrapText(ctx, verdict, 50, y, PW-100, 40) + 52;
+  /* 成就 */
+  if (kind === 'settle'){
+    const eq = equity() - G.debt, ach = [];
+    if (G.marginOpens===0) ach.push('🧘从未碰杠杆');
+    if (G.loanRefused) ach.push('🛡️拒绝网贷');
+    if (G.emptyDays>=10) ach.push('🪨空仓'+G.emptyDays+'天');
+    if (eq>=200000) ach.push('🚀资金翻倍');
+    ach.push('🎮活过30天');
+    ctx.fillStyle = '#f0b90b'; ctx.font = '24px sans-serif';
+    ctx.fillText(ach.join('  '), 50, y); y += 48;
+  }
+  /* 页脚 */
+  ctx.fillStyle = '#6b7280'; ctx.font = '23px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('不靠说教戒赌，让你亲手爆仓一次', PW/2, PH-110);
+  ctx.fillStyle = '#4a90d9';
+  ctx.fillText('zhongj1n.github.io/BaoCang-Simulator', PW/2, PH-70);
+  ctx.textAlign = 'left';
+  /* 长按保存 */
+  const url = cv.toDataURL('image/png');
+  showModal(`<h3>📸 战绩海报</h3>
+    <img src="${url}" style="width:100%;border-radius:8px;border:1px solid #2a2f3a">
+    <p style="color:#9aa0aa;font-size:13px">📱 长按图片 → 保存/转发到朋友圈和群聊。把种子发给朋友，同盘比谁活得久。</p>
+    <div class="btnrow"><button class="primary" onclick="closeModal()">关闭</button></div>`);
 }
 function restart(){
   const seed = 'S' + Math.floor(Math.random()*90000+10000);
@@ -754,6 +934,17 @@ function restart(){
   startGame();
 }
 window.addEventListener('resize', ()=>{ if (G) drawChart(); });
+/* 点按K线图：查看单根蜡烛（再点同一根取消） */
+document.getElementById('chart').addEventListener('click', e=>{
+  if (!G || !chartGeom) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (chartGeom.W / rect.width);
+  const step = (chartGeom.W - 120) / Math.max(1, chartGeom.n - 1);
+  let idx = Math.round((x - 30) / step);
+  idx = Math.max(0, Math.min(chartGeom.n - 1, idx));
+  inspectIdx = (idx === inspectIdx) ? -1 : idx;
+  drawChart();
+});
 </script>
 </body>
 </html>
