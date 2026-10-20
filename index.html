@@ -910,16 +910,7 @@ function recordScore(endLabel){
 function escHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-async function renderBoard(){
-  const el = document.getElementById('board'); if (!el) return;
-  let global = [];
-  if (SCORES_API){
-    el.innerHTML = '<h3>🌐 全网亏神榜</h3><div class="bempty">正在拉取全网数据…</div>';
-    try {
-      const r = await fetch(SCORES_API, { cache: 'no-store' });
-      if (r.ok){ const j = await r.json(); if (Array.isArray(j)) global = j; }
-    } catch(e){}
-  }
+function mergeScores(global){
   const seen = new Set(), all = [];
   for (const s of [...global, ...loadScores()]){
     if (!s || !Number.isFinite(s.pnl)) continue;
@@ -927,7 +918,11 @@ async function renderBoard(){
     if (seen.has(k)) continue; seen.add(k); all.push(s);
   }
   all.sort((a, b) => a.pnl - b.pnl);
-  const list = all.slice(0, 10), online = global.length > 0;
+  return all;
+}
+function paintBoard(all, online){
+  const el = document.getElementById('board'); if (!el) return;
+  const list = all.slice(0, 10);
   if (!list.length){
     el.innerHTML = '<h3>🏆 亏神榜</h3><div class="bempty">暂无记录。来亏出第一个传说吧。</div>';
     return;
@@ -941,6 +936,20 @@ async function renderBoard(){
       `<span class="bname">${escHtml(s.name)}</span>${loss}` +
       `<span class="bend">${s.end} · ${s.days}天 · ${when}</span></div>`;
   }).join('') + `<div class="bfoot">${online ? '全网' : '本机'}共 ${all.length} 局 · 按亏损额排名</div>`;
+}
+async function renderBoard(){
+  paintBoard(mergeScores([]), false);   // 先秒画本机榜，不等网络
+  if (!SCORES_API) return;
+  try {
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(SCORES_API, { cache: 'no-store', signal: ctl.signal });
+    clearTimeout(to);
+    if (r.ok){
+      const j = await r.json();
+      if (Array.isArray(j) && j.length) paintBoard(mergeScores(j), true);
+    }
+  } catch(e){ /* 超时/断网就停在本机榜 */ }
 }
 renderBoard();
 
