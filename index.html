@@ -21,21 +21,21 @@
   #stickyhead { flex:none; }
   /* 顶部信息栏 */
   #topbar { display:flex; justify-content:space-between; align-items:center;
-            background:#1a1f27; border-radius:10px; padding:10px 12px; margin-bottom:10px;
+            background:#1a1f27; border-radius:10px; padding:8px 10px; margin-bottom:8px;
             border:1px solid transparent; }
-  #topbar .day { font-size:16px; font-weight:bold; color:#f0b90b; }
-  #topbar .money { font-size:15px; }
-  #tiltbar-wrap { margin-top:6px; }
-  #tiltbar { height:8px; background:#2a2f3a; border-radius:4px; overflow:hidden; }
-  #tiltfill { height:100%; width:20%; border-radius:4px;
+  #topbar .day { font-size:15px; font-weight:bold; color:#f0b90b; }
+  #topbar .money { font-size:14px; }
+  #tiltbar-wrap { margin-top:4px; }
+  #tiltbar { height:6px; background:#2a2f3a; border-radius:3px; overflow:hidden; }
+  #tiltfill { height:100%; width:20%; border-radius:3px;
               background:linear-gradient(90deg,#4caf50,#f0b90b,#f44336); transition:width .4s; }
-  .tilt-label { font-size:12px; color:#9aa0aa; margin-top:3px; }
+  .tilt-label { font-size:11px; color:#9aa0aa; margin-top:2px; }
 
-  /* 提示条：固定3行高，版面不跳动 */
+  /* 提示条：固定2行高，瘦身版 */
   #newsflash { background:#1a1f27; border-left:3px solid #f0b90b; border-radius:6px;
-               padding:8px 10px; margin-bottom:10px; font-size:13px; line-height:1.5;
-               height:76px; overflow:hidden; display:-webkit-box;
-               -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+               padding:6px 10px; margin-bottom:8px; font-size:12px; line-height:1.5;
+               height:48px; overflow:hidden; display:-webkit-box;
+               -webkit-line-clamp:2; -webkit-box-orient:vertical; }
 
   /* 小道消息独立卡片 */
   #rumor-card { background:linear-gradient(135deg,#2a2118,#1e242e); border:1px solid #f0b90b;
@@ -690,8 +690,8 @@ function drawSpark(cv, s){
 /* ============ K线图（蜡烛+影线+成交量，红涨绿跌） ============ */
 function drawChart(){
   const cv = document.getElementById('chart'), ctx = cv.getContext('2d');
-  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 420;
-  cv.style.height = '210px';
+  const W = cv.width = cv.offsetWidth * 2, H = cv.height = 320;
+  cv.style.height = '160px';
   ctx.fillStyle = '#0d1015'; ctx.fillRect(0,0,W,H);
   const s = S(selected), data = G.ohlc[selected];
   document.getElementById('chart-name').innerText = s.name + ' · 日K';
@@ -705,7 +705,7 @@ function drawChart(){
   let max = -1e18, min = 1e18;
   data.forEach(k=>{ max = Math.max(max,k.h); min = Math.min(min,k.l); });
   const pad = (max-min)*0.08 || 1; max += pad; min -= pad;
-  const plotH = H*0.58, volH = H*0.11, topPad = 96;
+  const plotH = H*0.52, volH = H*0.10, topPad = 90;
   const px = i => 30 + i*((W-120)/Math.max(1, n-1));
   const py = v => topPad + (max-v)/(max-min)*plotH;
   /* 网格线 + 右侧价格轴 */
@@ -725,7 +725,7 @@ function drawChart(){
     ctx.beginPath(); ctx.moveTo(x, py(k.h)); ctx.lineTo(x, py(k.l)); ctx.stroke();  // 影线
     const yO = py(k.o), yC = py(k.c);
     ctx.fillRect(x-cw/2, Math.min(yO,yC), cw, Math.max(3, Math.abs(yO-yC)));        // 实体
-    const vh = k.v/volMax*volH, vyTop = topPad + plotH + 28;
+    const vh = k.v/volMax*volH, vyTop = topPad + plotH + 18;
     ctx.globalAlpha = 0.55;
     ctx.fillRect(x-cw/2, vyTop + volH - vh, cw, vh);
     ctx.globalAlpha = 1;
@@ -767,19 +767,19 @@ function drawChart(){
   if (inspectIdx >= 0 && inspectIdx < n){
     const k = data[inspectIdx], x = px(inspectIdx);
     ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.setLineDash([5,5]);
-    ctx.beginPath(); ctx.moveTo(x, topPad); ctx.lineTo(x, topPad+plotH+volH+28); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x, topPad); ctx.lineTo(x, topPad+plotH+volH+20); ctx.stroke(); ctx.setLineDash([]);
     const prev = inspectIdx > 0 ? data[inspectIdx-1].c : k.o;
     const chgp = (k.c - prev)/prev * 100;
     const dayTxt = inspectIdx >= PRE_DAYS ? `第${inspectIdx-PRE_DAYS+1}天` : `历史第${inspectIdx+1}天`;
     ctx.font = '18px sans-serif';
     const info = `${dayTxt} 开${k.o.toFixed(1)} 高${k.h.toFixed(1)} 低${k.l.toFixed(1)} 收${k.c.toFixed(1)} ${chgp>=0?'+':''}${chgp.toFixed(1)}%`;
     const tw = ctx.measureText(info).width;
-    ctx.fillStyle = 'rgba(20,24,32,.92)'; ctx.fillRect(24, 72, tw+20, 30);
-    ctx.fillStyle = '#fff'; ctx.fillText(info, 34, 94);
+    ctx.fillStyle = 'rgba(20,24,32,.92)'; ctx.fillRect(24, 60, tw+20, 28);
+    ctx.fillStyle = '#fff'; ctx.fillText(info, 34, 80);
   }
   /* 底部日期轴：左侧为开局前约3个月历史，右侧为游戏天数 */
   ctx.fillStyle = '#9aa0aa';
-  for (let i=PRE_DAYS; i<n; i+=5) ctx.fillText('D'+(i-PRE_DAYS+1), px(i)-10, H-14);
+  for (let i=PRE_DAYS; i<n; i+=5) ctx.fillText('D'+(i-PRE_DAYS+1), px(i)-10, H-12);
   ctx.fillStyle = '#6b7280';
   ctx.fillText('← 过去3个月历史', 30, H-14);
   if (n > PRE_DAYS){
@@ -791,7 +791,7 @@ function drawChart(){
   ctx.fillStyle = '#e8e8e8'; ctx.font = 'bold 20px sans-serif';
   ctx.fillText(`开${kLast.o.toFixed(1)} 高${kLast.h.toFixed(1)} 低${kLast.l.toFixed(1)} 收${kLast.c.toFixed(1)}`, 30, 34);
   ctx.font = '18px sans-serif'; ctx.fillStyle = '#6b7280';
-  ctx.fillText('成交量（相对）', 30, topPad + plotH + 20);
+  ctx.fillText('成交量（相对）', 30, topPad + plotH + 12);
   if (G.limitDown[selected]){ ctx.fillStyle='#26a69a'; ctx.font='bold 22px sans-serif';
     ctx.fillText('🧊 跌停封死 · 卖不出去', 30, 64); }
 }
