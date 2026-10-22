@@ -304,14 +304,14 @@ function pick(arr){ return arr[Math.floor(rng()*arr.length)]; }
 
 /* ============ 板块定义（照搬 A 股八大板块性格） ============ */
 const SECTORS = [
-  { id:'bank',   name:'银行红利', sub:'工商银行 · 建设银行 · 农业银行', sigma:0.012, limit:0.10, dividend:true,  desc:'无聊，但活得久。每10天发股息。' },
-  { id:'ai',     name:'AI算力',   sub:'光模块 · 半导体 · AI服务器', sigma:0.050, limit:0.20, dividend:false, desc:'叙事之王，拥挤之王。20cm。' },
-  { id:'ne',     name:'新能源',   sub:'锂电池 · 光伏 · 储能', sigma:0.035, limit:0.10, dividend:false, desc:'政策敏感，补贴与产能过剩之间横跳。' },
-  { id:'med',    name:'医药',     sub:'创新药 · 医疗器械 · CXO', sigma:0.028, limit:0.10, dividend:false, desc:'平时温吞，集采一来单日暴击。' },
-  { id:'baijiu', name:'白酒消费', sub:'贵州茅台 · 五粮液 · 消费龙头', sigma:0.022, limit:0.10, dividend:false, desc:'跟着经济预期慢涨慢跌。' },
-  { id:'broker', name:'券商',     sub:'中信证券 · 华泰证券 · 牛市旗手', sigma:0.040, limit:0.10, dividend:false, desc:'牛市旗手，市场涨跌它都放大2倍。' },
-  { id:'estate', name:'地产',     sub:'万科 · 保利发展 · 地产链', sigma:0.025, limit:0.10, dividend:false, desc:'长期趴着，救市政策一出连拉涨停。' },
-  { id:'mil',    name:'军工',     sub:'航空发动机 · 航天 · 船舶', sigma:0.045, limit:0.10, dividend:false, desc:'地缘新闻驱动，来得快去得更快。' },
+  { id:'bank',   name:'银行红利', sub:'工商银行 · 建设银行 · 农业银行', sigma:0.018, limit:0.10, dividend:true,  desc:'无聊，但活得久。每10天发股息。' },
+  { id:'ai',     name:'AI算力',   sub:'光模块 · 半导体 · AI服务器', sigma:0.075, limit:0.20, dividend:false, desc:'叙事之王，拥挤之王。20cm。' },
+  { id:'ne',     name:'新能源',   sub:'锂电池 · 光伏 · 储能', sigma:0.055, limit:0.10, dividend:false, desc:'政策敏感，补贴与产能过剩之间横跳。' },
+  { id:'med',    name:'医药',     sub:'创新药 · 医疗器械 · CXO', sigma:0.045, limit:0.10, dividend:false, desc:'平时温吞，集采一来单日暴击。' },
+  { id:'baijiu', name:'白酒消费', sub:'贵州茅台 · 五粮液 · 消费龙头', sigma:0.035, limit:0.10, dividend:false, desc:'跟着经济预期慢涨慢跌。' },
+  { id:'broker', name:'券商',     sub:'中信证券 · 华泰证券 · 牛市旗手', sigma:0.065, limit:0.10, dividend:false, desc:'牛市旗手，市场涨跌它都放大2倍。' },
+  { id:'estate', name:'地产',     sub:'万科 · 保利发展 · 地产链', sigma:0.040, limit:0.10, dividend:false, desc:'长期趴着，救市政策一出连拉涨停。' },
+  { id:'mil',    name:'军工',     sub:'航空发动机 · 航天 · 船舶', sigma:0.070, limit:0.10, dividend:false, desc:'地缘新闻驱动，来得快去得更快。' },
 ];
 function S(id){ return SECTORS.find(s=>s.id===id); }
 
@@ -345,7 +345,7 @@ let G = null;
 
 function newGame(seedStr){
   rng = mulberry32(hashSeed(seedStr || 'default'));
-  const prices={}, histories={}, heat={}, hold={}, ohlc={}, lastChange={};
+  const prices={}, histories={}, heat={}, hold={}, ohlc={}, lastChange={}, trend={};
   // 初始热度照搬 2026 年 10 月的真实格局：AI 拥挤见顶、红利低位
   const initHeat = { ai:30, broker:14, ne:12, med:10, baijiu:10, bank:10, mil:8, estate:6 };
   SECTORS.forEach(s=>{
@@ -355,13 +355,14 @@ function newGame(seedStr){
     prices[s.id] = pre[pre.length-1].c;   // 开局价 = 预生成历史的真实收尾价
     heat[s.id] = initHeat[s.id];
     hold[s.id] = { shares:0, boughtToday:0, avgCost:0 };
+    trend[s.id] = { v:0, left:0 };
     const last = pre[pre.length-1], prev = pre[pre.length-2];
     lastChange[s.id] = (last.c - prev.c)/prev.c;
   });
   return {
     seed: seedStr, day:1, cash:100000, tilt:20, debt:0,
     prices, histories, heat, hold, ohlc, lastChange,
-    limitDown:{}, limitUp:{}, shorts:{},
+    limitDown:{}, limitUp:{}, shorts:{}, trend,
     equityHist:[100000], lieHist:[100000],
     lieShares: 99900 / prices.bank, lieCash: 100,   // 躺平线：第一天全仓银行红利（按真实开局价折算股数）
     margin:null, firstMarginRig:false, marginOpens:0,
@@ -385,7 +386,7 @@ function flowHeat(){
   SECTORS.forEach(s=>{
     const g = G.lastChange[s.id] || 0;
     let flow = g / totalPos * 18;                       // 动量流入
-    if (G.heat[s.id] > 26) flow -= (G.heat[s.id]-26) * 0.55;  // 拥挤出清
+    if (G.heat[s.id] > 30) flow -= (G.heat[s.id]-30) * 0.40;  // 拥挤出清（放宽：让狂热多烧几天再塌）
     if (G.heat[s.id] < 6)  flow += (6 - G.heat[s.id]) * 0.35; // 冷门回补
     flow += (rng()-0.5) * 3;                             // 随机游走
     G.heat[s.id] += flow;
@@ -417,17 +418,51 @@ function rollEvent(){
   return EVENTS[0];
 }
 
+/* ============ 趋势引擎：让涨的接着涨、跌的接着跌 ============
+   每个板块有一份趋势状态 {v: 每日额外漂移, left: 剩余天数}。
+   趋势持续 4~8 天；到期后 35% 概率反转（涨多了要塌、跌深了反弹），否则熄火。
+   没有趋势就没有连板，没有连板就没有 FOMO，也就没有爆仓——这是勾贪心的核心。 */
+function ensureTrend(){
+  if (G.trend) return;
+  G.trend = {};
+  SECTORS.forEach(s=>{ G.trend[s.id] = { v:0, left:0 }; });
+}
+function stepTrend(){
+  ensureTrend();
+  SECTORS.forEach(s=>{
+    const t = G.trend[s.id];
+    if (t.left > 0){ t.left--; return; }
+    if (t.v !== 0){
+      if (rng() < 0.35){           // 到期反转：反转幅度与原趋势相近，持续 3~5 天
+        t.v = -t.v * (0.7 + rng()*0.5);
+        t.left = 3 + Math.floor(rng()*3);
+        return;
+      }
+      t.v = 0;                      // 熄火，本轮结束
+    }
+    const igniteP = s.id === 'bank' ? 0.05 : 0.14;   // 银行红利没有叙事：很少点火、力度也弱——躺平线必须睡得着
+    if (rng() < igniteP){              // 点火：热度越高越容易向上点火，冷门板块更容易阴跌
+      const upBias = G.heat[s.id] >= 14 ? 0.68 : 0.42;
+      const dir = rng() < upBias ? 1 : -1;
+      t.v = dir * (0.015 + rng()*0.016) * (s.id === 'bank' ? 0.35 : 1);   // 每日趋势漂移 1.5%~3.1%
+      t.left = 4 + Math.floor(rng()*5);    // 持续 4~8 天
+    }
+  });
+}
+
 function advanceDay(){
   /* 事件 */
   const ev = rollEvent();
   /* 热量流动 */
   flowHeat();
+  /* 趋势推进 */
+  stepTrend();
   /* 价格更新 */
   const mktHeat = SECTORS.reduce((a,s)=>a+G.heat[s.id],0)/8;
   SECTORS.forEach(s=>{
-    let drift = (G.heat[s.id]-12.5)*0.0006;
-    if (s.id==='broker') drift += (mktHeat-12.5)*0.0012;   // 牛市旗手：放大市场情绪
-    let r = drift + s.sigma*randn();
+    let drift = (G.heat[s.id]-12.5)*0.0012;
+    if (s.id==='broker') drift += (mktHeat-12.5)*0.0024;   // 牛市旗手：放大市场情绪
+    let r = drift + s.sigma*randn() + (G.trend && G.trend[s.id] ? G.trend[s.id].v : 0);
     if (ev && ev.shock[s.id]) r += ev.shock[s.id];
     if (G.margin && G.margin.sector===s.id && G.firstMarginRig) r += 0.05; // 配资养鱼：第一次给甜头
     r = Math.max(-s.limit, Math.min(s.limit, r));
@@ -460,7 +495,7 @@ function advanceDay(){
   /* 上头值 */
   const eq = equity(); const pnl = (eq - G.lastEquity) / Math.max(1, G.lastEquity);
   let dt = 0;
-  if (pnl < -0.03) dt = 15; else if (pnl < -0.01) dt = 8;
+  if (pnl < -0.03) dt = 20; else if (pnl < -0.01) dt = 8;
   else if (pnl > 0.02) dt = -8; else dt = -2;
   const posValue = SECTORS.reduce((a,s)=> a + G.hold[s.id].shares*G.prices[s.id], 0);
   const shortValue = G.shorts ? SECTORS.reduce((a,s)=>{ const sh = G.shorts[s.id]; return a + (sh ? sh.shares*G.prices[s.id] : 0); }, 0) : 0;
@@ -948,6 +983,7 @@ function resumeGame(){
     if (!data || !data.G || data.G.over) return;
     G = data.G; selected = data.selected || 'bank'; inspectIdx = -1;
     if (!G.shorts) G.shorts = {}; if (!G.limitUp) G.limitUp = {};
+    ensureTrend();   // 旧存档迁移：补趋势状态
     rng = mulberry32(hashSeed(G.seed + ':resume:' + G.day));   // 续玩从当前位置续随机流
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
