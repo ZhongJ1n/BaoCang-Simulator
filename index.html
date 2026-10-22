@@ -1186,11 +1186,13 @@ function recordScore(endLabel){
       headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(entry) }).catch(() => {}); } catch(e){}
   }
 }
-/* ============ 成就（全游戏就两个，都是极端局） ============ */
+/* ============ 成就（四个，全是极端局：百万线 + 千万线） ============ */
 const ACH_KEY = 'baocang_ach_v1';
 const ACHIEVEMENTS = [
   { id:'gift',  icon:'🐸', name:'奶蛙的馈赠', desc:'单局盈利 ≥ 100 万元', test: pnl => pnl >= 1000000 },
-  { id:'leave', icon:'🎫', name:'买定离场',   desc:'单局亏损 ≥ 100 万元', test: pnl => pnl <= -1000000 }
+  { id:'tycoon', icon:'👑', name:'千万富翁',   desc:'单局盈利 ≥ 1000 万元', test: pnl => pnl >= 10000000 },
+  { id:'leave', icon:'🎫', name:'买定离场',   desc:'单局亏损 ≥ 100 万元', test: pnl => pnl <= -1000000 },
+  { id:'charity', icon:'💸', name:'做慈善',   desc:'单局亏损 ≥ 1000 万元', test: pnl => pnl <= -10000000 }
 ];
 function loadAch(){
   try { return JSON.parse(localStorage.getItem(ACH_KEY)) || {}; } catch(e){ return {}; }
