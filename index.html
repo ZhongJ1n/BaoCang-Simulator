@@ -133,6 +133,11 @@
   .bwin { color:#2ebd85; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
   .bend { color:#8a919e; font-size:11px; flex:none; }
   .bfoot { color:#5c6470; font-size:11px; margin-top:8px; text-align:right; }
+  .brows { max-height:430px; overflow-y:auto; scrollbar-width:thin; }
+  .bpager { display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; }
+  .bpager button { background:#1d2432; color:#e8eaf0; border:1px solid #2c3547; border-radius:6px; padding:4px 14px; font-size:13px; cursor:pointer; }
+  .bpager button:disabled { opacity:.35; cursor:default; }
+  .bpager .bpageinfo { font-size:12px; color:#9aa0aa; }
   .achbanner { background:#2a2410; border:1px solid #f0b90b; border-radius:10px;
     padding:10px 12px; margin:10px 0; color:#ffd94d; font-size:14px; line-height:1.6; }
   .achrow { display:flex; align-items:center; gap:8px; padding:6px 0;
@@ -1236,22 +1241,37 @@ function mergeScores(global){
   all.sort((a, b) => a.pnl - b.pnl);
   return all;
 }
-function paintBoard(all, online){
+const BOARD_PAGE_SIZE = 100;
+let boardPage = 0, boardCache = [];
+function boardGo(delta){
+  boardPage += delta;
+  paintBoard(boardCache.all, boardCache.online, true);
+}
+function paintBoard(all, online, keepPage){
   const el = document.getElementById('board'); if (!el) return;
-  const list = all.slice(0, 10);
-  if (!list.length){
+  boardCache = { all, online };
+  if (!all.length){
     el.innerHTML = '<h3>🏆 亏神榜</h3><div class="bempty">暂无记录。来亏出第一个传说吧。</div>';
     return;
   }
+  const pages = Math.max(1, Math.ceil(all.length / BOARD_PAGE_SIZE));
+  if (!keepPage) boardPage = 0;
+  boardPage = Math.max(0, Math.min(boardPage, pages - 1));
+  const list = all.slice(boardPage * BOARD_PAGE_SIZE, (boardPage + 1) * BOARD_PAGE_SIZE);
   const medals = ['👑','🥈','🥉'];
-  el.innerHTML = `<h3>${online ? '🌐 全网亏神榜' : '🏆 亏神榜'} · 亏得越多越光荣</h3>` + list.map((s, i) => {
+  el.innerHTML = `<h3>${online ? '🌐 全网亏神榜' : '🏆 亏神榜'} · 亏得越多越光荣</h3><div class="brows">` + list.map((s, i) => {
+    const rank = boardPage * BOARD_PAGE_SIZE + i;
     const d = new Date(s.ts), when = (d.getMonth()+1) + '/' + d.getDate();
     const loss = s.pnl < 0 ? '<span class="bloss">-' + fmt(-s.pnl) + '</span>'
                            : '<span class="bwin">+' + fmt(s.pnl) + '</span>';
-    return `<div class="brow"><span class="brank">${medals[i] || (i+1)}</span>` +
+    return `<div class="brow"><span class="brank">${medals[rank] || (rank+1)}</span>` +
       `<span class="bname">${escHtml(s.name)}</span>${loss}` +
       `<span class="bend">${s.end} · ${s.days}天 · ${when}</span></div>`;
-  }).join('') + `<div class="bfoot">${online ? '全网' : '本机'}共 ${all.length} 局 · 按亏损额排名</div>`;
+  }).join('') + '</div>' +
+  (pages > 1 ? `<div class="bpager"><button onclick="boardGo(-1)" ${boardPage <= 0 ? 'disabled' : ''}>← 上一页</button>` +
+    `<span class="bpageinfo">第 ${boardPage + 1} / ${pages} 页</span>` +
+    `<button onclick="boardGo(1)" ${boardPage >= pages - 1 ? 'disabled' : ''}>下一页 →</button></div>` : '') +
+  `<div class="bfoot">${online ? '全网' : '本机'}共 ${all.length} 局 · 按亏损额排名 · 每页 ${BOARD_PAGE_SIZE} 条</div>`;
 }
 async function renderBoard(){
   paintBoard(mergeScores([]), false);   // 先秒画本机榜，不等网络
